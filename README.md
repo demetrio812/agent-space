@@ -8,6 +8,22 @@ Drag favourites to reorder them in either the grid or the horizontal strip above
 
 Scroll the open terminal with two fingers on a trackpad, a mouse wheel or a vertical touch gesture. Supported attached connections forward scrolling to Herdr, including its application-specific scroll handling; gestures do not become typed arrows or commands. Wheel events are preserved when batched, including Claude’s mouse reporting. Click terminal controls such as **Jump to bottom** directly.
 
+## Screenshots
+
+Captured on macOS using the built-in Demo source. All session names, workspaces and terminal output shown here are synthetic.
+
+**Session grid · dark mode**
+
+![AgentSpace in dark mode with Demo sessions, live previews and status indicators](docs/screenshots/demo-overview-dark.jpg)
+
+**Session grid · light mode**
+
+![AgentSpace in light mode with the same synthetic session grid](docs/screenshots/demo-overview-light.jpg)
+
+**Open terminal · favourites**
+
+![A synthetic terminal showing its computer and workspace, with favourites across the top](docs/screenshots/demo-terminal-favourites.jpg)
+
 ## Start
 
 Build AgentSpace using the instructions below, then open the built app. The first launch opens **Demo**, with synthetic sessions. Star a session, then choose **Favourites**. Click a tile to open its terminal; the back arrow returns to the overview. Settings contains connections, preview density, terminal text scale and **Appearance → System / Light / Dark**. Your appearance choice is saved across launches; System follows the device setting.
