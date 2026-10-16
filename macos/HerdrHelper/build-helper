@@ -1,0 +1,18 @@
+#!/bin/bash
+set -euo pipefail
+HELPER_SOURCE="$SRCROOT/HerdrHelper"
+HELPER_BUNDLE="$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/XPCServices/AgentSpaceHerdrHelper.xpc"
+mkdir -p "$HELPER_BUNDLE/Contents/MacOS"
+"$SRCROOT/../scripts/build-bridge"
+mkdir -p "$HELPER_BUNDLE/Contents/Resources"
+cp "$SRCROOT/../assets/bridge.pyz" "$HELPER_BUNDLE/Contents/Resources/bridge.pyz"
+cp "$HELPER_SOURCE/Info.plist" "$HELPER_BUNDLE/Contents/Info.plist"
+for HELPER_ARCH in $ARCHS; do
+  xcrun swiftc -parse-as-library -O -sdk "$SDKROOT" -target "$HELPER_ARCH-apple-macosx13.0" -module-cache-path "$PROJECT_TEMP_DIR/HelperModuleCache" "$HELPER_SOURCE/HelperCore.swift" "$HELPER_SOURCE/BridgeJob.swift" "$HELPER_SOURCE/HerdrHelperProtocol.swift" "$HELPER_SOURCE/HerdrHelperService.swift" "$HELPER_SOURCE/main.swift" -o "$PROJECT_TEMP_DIR/AgentSpaceHerdrHelper-$HELPER_ARCH"
+done
+HELPER_PARTS=()
+for HELPER_ARCH in $ARCHS; do HELPER_PARTS+=("$PROJECT_TEMP_DIR/AgentSpaceHerdrHelper-$HELPER_ARCH"); done
+xcrun lipo -create "${HELPER_PARTS[@]}" -output "$HELPER_BUNDLE/Contents/MacOS/AgentSpaceHerdrHelper"
+if [[ "${CODE_SIGNING_ALLOWED:-YES}" != NO ]]; then
+  codesign --force --sign "${EXPANDED_CODE_SIGN_IDENTITY:--}" --options runtime "$HELPER_BUNDLE"
+fi

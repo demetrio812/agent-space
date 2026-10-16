@@ -1,0 +1,11 @@
+#!/bin/zsh
+set -e
+APP_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+source "$APP_ROOT/scripts/tool-env"
+cd "$APP_ROOT"
+"$APP_ROOT/scripts/build-bridge"
+BUILD_ROOT="$APP_ROOT/build/macos"
+for BUILD_PROJECT in Pods/Pods.xcodeproj Runner.xcodeproj; do
+  if [[ "$BUILD_PROJECT" == Pods/* ]]; then BUILD_SCHEME=Pods-Runner; else BUILD_SCHEME=Runner; fi
+  xcrun xcodebuild -project "$APP_ROOT/macos/$BUILD_PROJECT" -scheme "$BUILD_SCHEME" -configuration Release -sdk macosx -destination 'generic/platform=macOS' -derivedDataPath "$BUILD_ROOT" "SYMROOT=$BUILD_ROOT/Build/Products" "OBJROOT=$BUILD_ROOT/Build/Intermediates.noindex" "CLANG_MODULE_CACHE_PATH=$BUILD_ROOT/ModuleCache.noindex" ARCHS=arm64 CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO build
+ done

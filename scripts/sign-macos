@@ -1,0 +1,16 @@
+#!/bin/zsh
+set -e
+APP_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+APP_BUNDLE="${1:-$APP_ROOT/build/macos/Build/Products/Release/AgentSpace.app}"
+SIGNING_IDENTITY="${AGENTSPACE_SIGNING_IDENTITY:--}"
+# Ad-hoc development has no Team ID for Hardened Runtime library validation.
+# Developer ID distributions keep Hardened Runtime; the main sandbox is always retained.
+SIGN_OPTIONS=runtime
+if [[ "$SIGNING_IDENTITY" == - ]]; then SIGN_OPTIONS=0; fi
+# Sign each nested component independently: UI entitlements must never reach the helper.
+for FRAMEWORK in "$APP_BUNDLE/Contents/Frameworks/"*.framework; do
+  codesign --force --sign "$SIGNING_IDENTITY" --options "$SIGN_OPTIONS" "$FRAMEWORK"
+done
+codesign --force --sign "$SIGNING_IDENTITY" --options runtime "$APP_BUNDLE/Contents/XPCServices/AgentSpaceHerdrHelper.xpc"
+codesign --force --sign "$SIGNING_IDENTITY" --options "$SIGN_OPTIONS" --entitlements "$APP_ROOT/macos/Runner/Release.entitlements" "$APP_BUNDLE"
+codesign --verify --deep --strict "$APP_BUNDLE"

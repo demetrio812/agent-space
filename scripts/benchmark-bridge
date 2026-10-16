@@ -1,0 +1,89 @@
+#!/usr/bin/env python3
+"""Development benchmark: previous commit versus persistent SSH, disposable only."""
+import argparse
+import os
+from pathlib import Path
+import subprocess
+import tarfile
+import tempfile
+import uuid
+
+parser=argparse.ArgumentParser(); parser.add_argument('--mode',choices=['baseline','persistent'],required=True)
+parser.add_argument('--samples',type=int,default=100); parser.add_argument('--output',type=Path,required=True)
+args=parser.parse_args()
+if not 1<=args.samples<=1000: parser.error('samples must be 1..1000')
+source=Path(__file__).resolve().parents[1]
+repo=Path(subprocess.check_output(['git','rev-parse','--show-toplevel'],cwd=source,text=True).strip())
+fixture=source/'test/fixtures/network_ssh_fixture.py'
+python=os.environ.get('AGENTSPACE_TEST_PYTHON')
+if not python: parser.error('Set AGENTSPACE_TEST_PYTHON to the disposable Paramiko test environment')
+args.output=args.output.resolve(); args.output.parent.mkdir(parents=True,exist_ok=True)
+with tempfile.TemporaryDirectory(prefix='bridge-bench-',dir=repo/'work') as scratch:
+    if args.mode=='baseline':
+        archive=subprocess.Popen(['git','archive','6def612','outputs/agentspace'],cwd=repo,stdout=subprocess.PIPE)
+        with tarfile.open(fileobj=archive.stdout,mode='r|') as tar: tar.extractall(scratch,filter='data')
+        if archive.wait()!=0: raise RuntimeError('Cannot export baseline')
+        app=Path(scratch)/'outputs/agentspace'
+    else: app=source
+    token=uuid.uuid4().hex
+    test=app/'test'/f'.bridge-benchmark-{token}_test.dart'
+    extra_import="import 'package:agentspace/src/network_backend.dart';" if args.mode=='persistent' else ''
+    constructor='NetworkHerdrBackend.remote(profile,vault)' if args.mode=='persistent' else 'RemoteHerdrBackend(profile,vault)'
+    catalog="""final clock=Stopwatch()..start(); var first=-1.0;
+      await for(final update in backend.discover(epoch:++epoch,priorityMachines:{})) {
+        if(first<0 && update.sessions.any((s)=>s.origin?.isGateway==true)) first=clock.elapsedMicroseconds/1000;
+      }
+      networkTimes.add(clock.elapsedMicroseconds/1000); return first;""" if args.mode=='persistent' else "final clock=Stopwatch()..start(); await backend.listSessions(); return clock.elapsedMicroseconds/1000;"
+    peer_measure="""final peer=rows.singleWhere((s)=>s.origin!.machineId==List.filled(32,'b').join());
+      await backend.sendTerminalInput(peer,TerminalInput.keys(['left']));
+      for(var i=0;i<samples;i++) { final clock=Stopwatch()..start(); await backend.sendTerminalInput(peer,TerminalInput.keys(['left'])); peerTimes.add(clock.elapsedMicroseconds/1000); }""" if args.mode=='persistent' else ''
+    dart=r'''import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:agentspace/src/backend.dart';
+import 'package:agentspace/src/models.dart';
+import 'package:agentspace/src/protocol.dart';
+EXTRA_IMPORT
+void main() {
+ TestWidgetsFlutterBinding.ensureInitialized();
+ test('disposable latency benchmark',() async {
+  final root=Directory(await (await Directory('/tmp').createTemp('ab-')).resolveSymbolicLinks());
+  final fixture=await Process.start(Platform.environment['AGENTSPACE_TEST_PYTHON']!,[Platform.environment['BRIDGE_BENCH_FIXTURE']!,root.path]);
+  fixture.stderr.drain<void>();
+  final ready=jsonDecode(await fixture.stdout.transform(utf8.decoder).transform(const LineSplitter()).first) as Map;
+  final port=ready['controlPort'] as int;
+  Future<Map> stats() async { final socket=await Socket.connect('127.0.0.1',port); try { socket.write('{"op":"stats"}\n'); return jsonDecode(await socket.cast<List<int>>().transform(utf8.decoder).transform(const LineSplitter()).first) as Map; } finally { socket.destroy(); } }
+  final profile=ConnectionProfile(id:'bench',label:'Disposable',kind:ConnectionKind.ssh,host:'127.0.0.1',port:ready['gateway']['port'],username:'fixture',hostFingerprint:ready['gateway']['fingerprint']);
+  final vault=MemoryCredentialVault(); await vault.write(profile.id,const SshCredentials(password:'disposable'));
+  final backend=CONSTRUCTOR;
+  final samples=int.parse(Platform.environment['BRIDGE_BENCH_SAMPLES']!);
+  final inputTimes=<double>[], catalogTimes=<double>[], networkTimes=<double>[], peerTimes=<double>[];
+  var epoch=0;
+  Future<double> catalog() async { CATALOG }
+  Map summary(List<double> values) { if(values.isEmpty) return {'available':false}; final sorted=values.toList()..sort(); return {'samples':values.length,'p50_ms':sorted[(sorted.length*.5).ceil()-1],'p95_ms':sorted[(sorted.length*.95).ceil()-1]}; }
+  Map counters(Map row) { final events=row['events'] as List; return {'ssh_execs':events.where((e)=>e['exec']!=null).length,'package_uploads':events.where((e)=>e['upload']!=null).length,'command_bytes':events.fold<int>(0,(n,e)=>n+(e['commandBytes'] as int? ??0))}; }
+  try {
+    final cold=Stopwatch()..start(); final rows=await backend.listSessions(); final coldMs=cold.elapsedMicroseconds/1000;
+    final gateway=rows.firstWhere((s)=>s.key.backend=='herdr');
+    await backend.sendTerminalInput(gateway,TerminalInput.keys(['left']));
+    // listSessions consumes epoch 1 in the persistent adapter.
+    epoch=1;
+    final before=await stats();
+    for(var i=0;i<samples;i++) { final clock=Stopwatch()..start(); await backend.sendTerminalInput(gateway,TerminalInput.keys(['left'])); inputTimes.add(clock.elapsedMicroseconds/1000); }
+    for(var i=0;i<samples;i++) { catalogTimes.add(await catalog()); }
+    final warmAfter=await stats();
+    PEER_MEASURE
+    final result={'mode':Platform.environment['BRIDGE_BENCH_MODE'],'baseline_commit':'6def612','loopback':true,'cold_catalog_ms':coldMs,'gateway_input':summary(inputTimes),'gateway_catalog_available':summary(catalogTimes),'network_catalog_complete':summary(networkTimes),'peer_input':summary(peerTimes),'before_warm':counters(before),'after_warm':counters(warmAfter),'after_peer':counters(await stats())};
+    await File(Platform.environment['BRIDGE_BENCH_OUTPUT']!).writeAsString('${const JsonEncoder.withIndent('  ').convert(result)}\n');
+  } finally { await backend.close(); fixture.kill(); await fixture.exitCode.timeout(const Duration(seconds:15)); await root.delete(recursive:true); }
+ },timeout:const Timeout(Duration(minutes:10)));
+}
+'''.replace('EXTRA_IMPORT',extra_import).replace('CONSTRUCTOR',constructor).replace('CATALOG',catalog).replace('PEER_MEASURE',peer_measure)
+    test.write_text(dart)
+    env=dict(os.environ,BRIDGE_BENCH_FIXTURE=str(fixture),BRIDGE_BENCH_SAMPLES=str(args.samples),BRIDGE_BENCH_MODE=args.mode,BRIDGE_BENCH_OUTPUT=str(args.output),AGENTSPACE_TOOL_CACHE=str((repo/'work').resolve()))
+    try:
+        result=subprocess.run([str(app/'scripts/flutterw'),'--suppress-analytics','test',str(test)],cwd=app,env=env)
+        if result.returncode: raise SystemExit(result.returncode)
+    finally: test.unlink(missing_ok=True)
+print(args.output.read_text())

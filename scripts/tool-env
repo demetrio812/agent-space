@@ -1,0 +1,14 @@
+# Shared by the Flutter/Dart wrappers and native build fallback.
+# Use the prepared workspace cache here; keep extracted source self-contained.
+if [[ -d "$APP_ROOT/../../work/fvm/versions/3.47.7" ]]; then
+  TOOL_CACHE_ROOT="$(cd "$APP_ROOT/../../work" && pwd)"
+else
+  TOOL_CACHE_ROOT="${AGENTSPACE_TOOL_CACHE:-$APP_ROOT/.tool-cache}"
+fi
+export FVM_CACHE_PATH="${FVM_CACHE_PATH:-$TOOL_CACHE_ROOT/fvm}"
+export CP_HOME_DIR="${CP_HOME_DIR:-$TOOL_CACHE_ROOT/cocoapods}"
+export CP_CACHE_DIR="${CP_CACHE_DIR:-$TOOL_CACHE_ROOT/cocoapods-cache}"
+export GRADLE_USER_HOME="${GRADLE_USER_HOME:-$TOOL_CACHE_ROOT/gradle}"
+export ANDROID_USER_HOME="${ANDROID_USER_HOME:-$TOOL_CACHE_ROOT/android-user}"
+export PUB_CACHE="${PUB_CACHE:-${AGENTSPACE_PUB_CACHE:-$TOOL_CACHE_ROOT/pub-cache}}"
+export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$TOOL_CACHE_ROOT/tool-config}"

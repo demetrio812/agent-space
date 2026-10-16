@@ -1,0 +1,6 @@
+#!/bin/zsh
+set -e
+APP_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+source "$APP_ROOT/scripts/tool-env"
+cd "$APP_ROOT"
+exec fvm dart "$@"

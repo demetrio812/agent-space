@@ -1,0 +1,13 @@
+#!/usr/bin/env python3
+import hashlib
+from pathlib import Path
+from bridge.package import build_package
+from bridge.launcher import PYTHON_LAUNCHER
+
+root=Path(__file__).resolve().parent.parent
+assets=root/'assets'; assets.mkdir(exist_ok=True)
+data=build_package(root/'scripts/catalog-gate.py')
+(assets/'bridge.pyz').write_bytes(data)
+(assets/'bridge-bootstrap.py').write_bytes((root/'scripts/bridge/bootstrap.py').read_bytes())
+(assets/'bridge-launcher.sh').write_text(PYTHON_LAUNCHER)
+print(hashlib.sha256(data).hexdigest())

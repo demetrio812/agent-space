@@ -1,0 +1,61 @@
+#!/usr/bin/env python3
+"""Opt-in network discovery and preview check using existing OpenSSH access."""
+import argparse
+import hashlib
+import json
+from pathlib import Path
+import secrets
+import subprocess
+import threading
+import time
+
+from bridge.gateway import Machine, PeerWorker, ssh_arguments
+from bridge.package import build_package
+
+parser=argparse.ArgumentParser(); parser.add_argument('--gateway',required=True)
+parser.add_argument('--output',type=Path,required=True); parser.add_argument('--seconds',type=int,default=5)
+args=parser.parse_args()
+if not 1<=args.seconds<=30: parser.error('preview duration must be 1..30 seconds')
+source=Path(__file__).resolve().parent
+package=build_package(source/'catalog-gate.py'); digest=hashlib.sha256(package).hexdigest()
+bootstrap=(source/'bridge/bootstrap.py').read_text()
+machine=Machine('a'*32,'Gateway',args.gateway,'default',True)
+
+def open_worker(lane):
+    config={'role':'gateway','lane':lane,'herdr':'','socket':'','generationStyle':'ssh',
+            'allowInput':False,'nonce':secrets.token_hex(16),'digest':digest}
+    process=subprocess.Popen(ssh_arguments(machine,bootstrap),stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,start_new_session=True)
+    return PeerWorker(process,machine,lane,package,config)
+
+computers={}; started=time.monotonic()
+worker=open_worker('discovery')
+try:
+    def catalog_event(row):
+        if row.get('event')=='computer': computers[row['value']['machine']]=row['value']
+    worker.request({'op':'catalog','payload':{'epoch':1,'priorityMachines':[]}},on_event=catalog_event,timeout=180)
+finally: worker.close()
+summary={'digest':digest,'catalog_seconds':time.monotonic()-started,'computers':[
+    {'machine':row['machine'],'label':row['label'],'session':row['session'],'state':row['state'],'code':row['code'],
+     'sessions':len(row.get('catalog',{}).get('catalog',{}).get('result',{}).get('agents',[]))} for row in computers.values()]}
+selected=next((row for row in computers.values() if row['machine']!='gateway' and row['state']=='live' and row['catalog']['catalog']['result']['agents']),None)
+if selected:
+    agent=selected['catalog']['catalog']['result']['agents'][0]
+    route={'machine':selected['machine'],'session':selected['session'],'targetHash':selected['targetHash'],
+           'generation':selected['generation'],'terminal':agent['terminal_id'],'pane':agent['pane_id']}
+    frames=[]; ready=threading.Event(); closed=threading.Event()
+    def observed(row):
+        value=row.get('value',{})
+        if row.get('event')=='frame' and value.get('type')=='terminal.frame':
+            frames.append({'width':value['width'],'height':value['height']}); ready.set()
+        if row.get('event')=='closed': closed.set()
+    stream=open_worker('streams')
+    try:
+        reply=stream.request({'op':'observe','route':route,'payload':{'mode':'preview'}},on_event=observed)
+        if not ready.wait(15): raise RuntimeError('No preview frame received')
+        closed.wait(args.seconds)
+        summary['preview']={'machine':selected['machine'],'frames':len(frames),'first_geometry':frames[0],'remained_open':not closed.is_set(),'seconds':args.seconds}
+        stream.request({'op':'cancel','payload':{'subscription':reply['subscription']}})
+    finally: stream.close()
+args.output.parent.mkdir(parents=True,exist_ok=True)
+args.output.write_text(json.dumps(summary,indent=2)+'\n')
+print(json.dumps(summary,indent=2))
