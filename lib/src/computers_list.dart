@@ -24,7 +24,7 @@ class ComputersList extends StatelessWidget {
   Widget _row(BuildContext context, ComputerInfo computer) {
     final id = computer.origin.computerId,
         label = app.computerLabel(computer.origin.computerId);
-    final selected = app.layout.filter == 'computer:$id';
+    final selected = app.selectedComputerId == id;
     final color = switch (computer.state) {
       ComputerState.live => const Color(0xff9ed48f),
       ComputerState.attention => const Color(0xffeac572),

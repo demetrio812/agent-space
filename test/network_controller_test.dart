@@ -27,6 +27,34 @@ void main() {
     await app.shutdown();
     await directory.delete(recursive: true);
   });
+  test('computer scope follows workspace selection and All clears it', () async {
+    final a = fixture.session(machine: fixtureMachineA);
+    final a2 = fixture.session(
+      machine: fixtureMachineA, terminal: 't2', workspace: 'w2',
+    );
+    final b = fixture.session(machine: fixtureMachineB);
+    fixture.initial = [a, a2, b];
+    await app.start(polling: false);
+    expect(app.sidebarWorkspaces.length, 3);
+    app.setFilter('computer:${a.computerId}');
+    expect(app.selectedComputerId, a.computerId);
+    expect(app.sidebarWorkspaces.keys, unorderedEquals([
+      a.workspaceFilterId, a2.workspaceFilterId,
+    ]));
+    expect(app.visibleSessions, unorderedEquals([a, a2]));
+    app.setFilter(a.workspaceFilterId);
+    expect(app.selectedComputerId, a.computerId);
+    expect(app.sidebarWorkspaces.length, 2);
+    expect(app.visibleSessions.single, a);
+    app.setFilter('computer:missing');
+    expect(app.sidebarWorkspaces, isEmpty);
+    app.setFilter('all');
+    expect(app.selectedComputerId, isNull);
+    expect(app.sidebarWorkspaces.length, 3);
+    expect(app.visibleSessions.length, 3);
+    app.setFilter('favourites');
+    expect(app.sidebarWorkspaces.length, 3);
+  });
   test(
     'incremental offline peer preserves other live session and favourite draft',
     () async {

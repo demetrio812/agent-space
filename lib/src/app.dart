@@ -641,8 +641,17 @@ class _Sidebar extends StatelessWidget {
                 app.layout.favourites.length,
                 key: const ValueKey('nav-favourites'),
               ),
-              if (app.computers.isNotEmpty)
+              if (app.computers.isNotEmpty) ...[
+                _row(
+                  context,
+                  'all',
+                  'All',
+                  Icons.devices,
+                  app.computers.length,
+                  key: const ValueKey('nav-all-computers'),
+                ),
                 ComputersList(app: app, onSelected: onClose),
+              ],
               const SizedBox(height: 22),
               const Padding(
                 padding: EdgeInsets.symmetric(horizontal: 20),
@@ -652,7 +661,7 @@ class _Sidebar extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 9),
-              ...app.workspaces.entries.map(
+              ...app.sidebarWorkspaces.entries.map(
                 (e) => _row(
                   context,
                   e.key,
@@ -661,6 +670,7 @@ class _Sidebar extends StatelessWidget {
                   app.sessions
                       .where((s) => s.workspaceFilterId == e.key)
                       .length,
+                  key: ValueKey('workspace-${e.key}'),
                 ),
               ),
               if (app.layout.groups.isNotEmpty)

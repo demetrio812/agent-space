@@ -189,6 +189,34 @@ class AppController extends ChangeNotifier {
     return result;
   }
 
+  /// A workspace belongs to one computer, so navigating into it keeps
+  /// that computer's workspace list visible in the sidebar.
+  String? get selectedComputerId {
+    final filter = layout.filter;
+    if (filter.startsWith('computer:')) return filter.substring(9);
+    if (filter == 'all' ||
+        filter == 'favourites' ||
+        filter.startsWith('group:')) {
+      return null;
+    }
+    return [...sessions, ...layout.retained.values, ...layout.favourites.values]
+        .where((session) => session.workspaceFilterId == filter)
+        .firstOrNull
+        ?.computerId;
+  }
+
+  Map<String, String> get sidebarWorkspaces {
+    final computerId = selectedComputerId;
+    final result = workspaces;
+    if (computerId == null) return result;
+    final workspaceIds = sessions
+        .where((session) => session.computerId == computerId)
+        .map((session) => session.workspaceFilterId)
+        .toSet();
+    result.removeWhere((id, _) => !workspaceIds.contains(id));
+    return result;
+  }
+
   String computerLabel(String id, {SessionOrigin? origin}) {
     final current =
         computers.where((c) => c.origin.computerId == id).firstOrNull?.origin ??

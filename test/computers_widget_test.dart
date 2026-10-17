@@ -50,6 +50,63 @@ void main() {
     return app;
   }
 
+  for (final size in [const Size(390, 844), const Size(1366, 1024)]) {
+    testWidgets('sidebar scopes workspaces and All restores them at $size', (
+      tester,
+    ) async {
+      await tester.binding.setSurfaceSize(size);
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final app = await create(tester);
+      Future<void> openSidebar() async {
+        final picker = find.byKey(const ValueKey('workspace-picker'));
+        if (picker.evaluate().isNotEmpty &&
+            find.byTooltip('Close sidebar').evaluate().isEmpty) {
+          await tester.tap(picker);
+          await tester.pumpAndSettle();
+        }
+      }
+
+      await openSidebar();
+      final peer = app.sessions.last;
+      final other = app.sessions.first;
+      final all = find.byKey(const ValueKey('nav-all-computers'));
+      expect(all, findsOneWidget);
+      expect(
+        tester.getTopLeft(all).dy,
+        lessThan(tester.getTopLeft(find.text('Computers')).dy),
+      );
+      await tester.tap(find.byKey(ValueKey('computer-${peer.computerId}')));
+      await tester.pumpAndSettle();
+      await openSidebar();
+      final workspace = find.byKey(
+        ValueKey('workspace-${peer.workspaceFilterId}'),
+      );
+      await tester.ensureVisible(workspace);
+      expect(
+        find.byKey(ValueKey('workspace-${other.workspaceFilterId}')),
+        findsNothing,
+      );
+      await tester.tap(workspace);
+      await tester.pumpAndSettle();
+      await openSidebar();
+      expect(app.selectedComputerId, peer.computerId);
+      expect(
+        find.byKey(ValueKey('workspace-${other.workspaceFilterId}')),
+        findsNothing,
+      );
+      await tester.ensureVisible(all);
+      await tester.tap(all);
+      await tester.pumpAndSettle();
+      await openSidebar();
+      expect(app.layout.filter, 'all');
+      expect(app.visibleSessions.length, 3);
+      expect(
+        find.byKey(ValueKey('workspace-${other.workspaceFilterId}')),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    });
+  }
   for (final size in [
     const Size(390, 844),
     const Size(844, 390),
