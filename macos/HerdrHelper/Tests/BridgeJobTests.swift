@@ -66,7 +66,8 @@ final class BridgeJobTests: XCTestCase {
       ["type":"request","protocol":"agentspace-bridge-v2","nonce":c.nonce,"lane":"input","id":"1","op":"input","payload":payload,"route":route]
     }
     XCTAssertNoThrow(try validateBridgeEnvelope(envelope(["paste":"/cache/a'post with space.png"]),configuration:c))
-    for payload:[String:Any] in [["paste":""],["paste":"bad\n"],["paste":"bad\u{1b}"],["paste":String(repeating:"x",count:16385)],["paste":"x","keys":["enter"]],["paste":true]] {
+    XCTAssertNoThrow(try validateBridgeEnvelope(envelope(["paste":"  first\n\tsecond café\n"]),configuration:c))
+    for payload:[String:Any] in [["paste":""],["paste":"bad\r"],["paste":"bad\u{1b}"],["paste":String(repeating:"x",count:16385)],["paste":"x","keys":["enter"]],["paste":true]] {
       XCTAssertThrowsError(try validateBridgeEnvelope(envelope(payload),configuration:c))
     }
   }

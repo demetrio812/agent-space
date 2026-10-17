@@ -172,7 +172,8 @@ def validate_input(value):
         paste = 'paste' in value
         text = value['paste' if paste else 'text']
         if (not isinstance(text, str) or not 1 <= len(text.encode('utf-8')) <= MAX_INPUT_BYTES
-                or any(ord(c) < 32 or 127 <= ord(c) < 160 for c in text)):
+                or any((ord(c) < 32 and not (paste and c in '\n\t'))
+                       or 127 <= ord(c) < 160 for c in text)):
             raise ValueError('Invalid terminal text')
         return ('pane.send_input', {'text': text, 'keys': []}) if paste else ('pane.send_text', {'text': text})
     if set(value) == {'keys'}:
@@ -235,7 +236,7 @@ def terminal_input(binary, socket_path, identity, terminal, encoded, allow_input
     value = json.loads(raw.decode('utf-8', errors='strict'))
     method, params = validate_input(value)
     if method == 'pane.send_input':
-        raise ValueError('Image paste requires a persistent connection')
+        raise ValueError('Terminal paste requires a persistent connection')
     operation = ['send-text', params['text']] if method == 'pane.send_text' else ['send-keys', *params['keys']]
     if server_identity(socket_path) != identity:
         raise RuntimeError('Herdr server identity changed')

@@ -570,7 +570,7 @@ void main() {
     }
   });
   testWidgets(
-    'phone CRLF paste reaches the composer without terminal delivery',
+    'phone CRLF paste reaches the terminal without changing the draft',
     (tester) async {
       await tester.binding.setSurfaceSize(const Size(390, 844));
       addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -591,11 +591,10 @@ void main() {
         tester.testTextInput.enterText('  first\r\nsecond');
         await tester.pump(const Duration(milliseconds: 100));
         await tester.pump();
-        expect(backend.input, isEmpty);
-        expect(
-          app.layout.drafts[backend.session.key.id],
-          'keep\nfirst\nsecond',
-        );
+        expect(backend.input.single.isPaste, isTrue);
+        expect(backend.input.single.textValue, 'first\nsecond');
+        expect(app.layout.drafts[backend.session.key.id], 'keep');
+        expect(find.byKey(const ValueKey('draft-input')), findsNothing);
       } finally {
         await tester.pump(const Duration(milliseconds: 350));
         await tester.pumpWidget(const SizedBox());
@@ -604,6 +603,78 @@ void main() {
       }
     },
   );
+  for (final draftFocused in [false, true]) {
+    testWidgets('Cmd+V follows focus with composer open: $draftFocused', (
+      tester,
+    ) async {
+      final backend = InputFixture();
+      final app = AppController(
+        snapshot: AppSnapshot(),
+        store: WidgetStore(),
+        backendFactory: (_) => backend,
+      );
+      final pasted = List.filled(
+        120,
+        '  first\tsecond café\n',
+      ).join();
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        (call) async =>
+            call.method == 'Clipboard.getData' ? {'text': pasted} : null,
+      );
+      try {
+        await app.start(polling: false);
+        app.select(backend.session.key.id);
+        app.updateDraft(backend.session.key.id, 'keep');
+        await tester.pumpWidget(AgentSpaceApp(controller: app, desktop: true));
+        await tester.pump(const Duration(milliseconds: 800));
+        await tester.tap(find.byKey(const ValueKey('toggle-composer')));
+        await tester.pump();
+        final field = tester.widget<TextField>(
+          find.byKey(const ValueKey('draft-input')),
+        );
+        field.controller!.selection = const TextSelection.collapsed(offset: 4);
+        if (!draftFocused) {
+          await tester.tap(find.byType(TerminalView));
+          await tester.pump();
+        }
+        // Native macOS paste selector uses the focused editor, like Cmd+V.
+        if (draftFocused) {
+          final editor = tester.state<EditableTextState>(
+            find.descendant(
+              of: find.byKey(const ValueKey('draft-input')),
+              matching: find.byType(EditableText),
+            ),
+          );
+          await editor.pasteText(SelectionChangedCause.keyboard);
+        } else {
+          await tester.sendKeyDownEvent(LogicalKeyboardKey.metaLeft);
+          await tester.sendKeyEvent(LogicalKeyboardKey.keyV);
+          await tester.sendKeyUpEvent(LogicalKeyboardKey.metaLeft);
+        }
+        await tester.pump(const Duration(milliseconds: 100));
+        expect(field.focusNode!.hasFocus, draftFocused);
+        expect(backend.composedCalls, 0);
+        if (draftFocused) {
+          expect(backend.input, isEmpty);
+          expect(app.layout.drafts[backend.session.key.id], 'keep$pasted');
+        } else {
+          expect(backend.input.single.isPaste, isTrue);
+          expect(backend.input.single.textValue, pasted);
+          expect(app.layout.drafts[backend.session.key.id], 'keep');
+        }
+      } finally {
+        await tester.pump(const Duration(milliseconds: 350));
+        await tester.pumpWidget(const SizedBox());
+        await tester.runAsync(app.shutdown);
+        await tester.pump();
+        tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          SystemChannels.platform,
+          null,
+        );
+      }
+    });
+  }
   testWidgets('oversized terminal paste preserves the existing draft', (
     tester,
   ) async {
@@ -657,6 +728,8 @@ void main() {
     );
     expect(TerminalInput.text('\x1b[A').validationError, isNotNull);
     expect(TerminalInput.text('first\nsecond').validationError, isNotNull);
+    expect(TerminalInput.paste('first\n\tsecond').validationError, isNull);
+    expect(TerminalInput.paste('bad\x1b').validationError, isNotNull);
     expect(
       TerminalInput.keys(['ctrl+enter; injected']).validationError,
       isNotNull,
@@ -945,54 +1018,53 @@ void main() {
       await tester.pump();
     }
   });
-  testWidgets('multiline paste preserves the draft and waits in the composer', (
-    tester,
-  ) async {
-    final backend = InputFixture();
-    final app = AppController(
-      snapshot: AppSnapshot(),
-      store: WidgetStore(),
-      backendFactory: (_) => backend,
-    );
-    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-      SystemChannels.platform,
-      (call) async =>
-          call.method == 'Clipboard.getData' ? {'text': 'first\nsecond'} : null,
-    );
-    try {
-      await app.start(polling: false);
-      app.select(backend.session.key.id);
-      app.updateDraft(backend.session.key.id, 'keep');
-      await tester.pumpWidget(AgentSpaceApp(controller: app, desktop: true));
-      await tester.pump(const Duration(milliseconds: 800));
-      await tester.tap(find.byType(TerminalView));
-      await tester.pump();
-      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
-      await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
-      await tester.sendKeyEvent(LogicalKeyboardKey.keyV);
-      await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
-      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
-      await tester.pump(const Duration(milliseconds: 100));
-      await tester.pump();
-      expect(backend.input, isEmpty);
-      expect(app.layout.drafts[backend.session.key.id], 'keep\nfirst\nsecond');
-      expect(
-        (tester.widget(
-          find.byKey(const ValueKey('draft-input')),
-        ) as TextField).controller!.text,
-        'keep\nfirst\nsecond',
+  testWidgets(
+    'multiline terminal paste keeps the message box closed and draft unchanged',
+    (tester) async {
+      final backend = InputFixture();
+      final app = AppController(
+        snapshot: AppSnapshot(),
+        store: WidgetStore(),
+        backendFactory: (_) => backend,
       );
-    } finally {
-      await tester.pump(const Duration(milliseconds: 350));
-      await tester.pumpWidget(const SizedBox());
-      await tester.runAsync(app.shutdown);
-      await tester.pump();
       tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
         SystemChannels.platform,
-        null,
+        (call) async => call.method == 'Clipboard.getData'
+            ? {'text': 'first\nsecond'}
+            : null,
       );
-    }
-  });
+      try {
+        await app.start(polling: false);
+        app.select(backend.session.key.id);
+        app.updateDraft(backend.session.key.id, 'keep');
+        await tester.pumpWidget(AgentSpaceApp(controller: app, desktop: true));
+        await tester.pump(const Duration(milliseconds: 800));
+        await tester.tap(find.byType(TerminalView));
+        await tester.pump();
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+        await tester.sendKeyEvent(LogicalKeyboardKey.keyV);
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+        await tester.pump(const Duration(milliseconds: 100));
+        await tester.pump();
+        expect(backend.input.single.isPaste, isTrue);
+        expect(backend.input.single.textValue, 'first\nsecond');
+        expect(backend.composedCalls, 0);
+        expect(app.layout.drafts[backend.session.key.id], 'keep');
+        expect(find.byKey(const ValueKey('draft-input')), findsNothing);
+      } finally {
+        await tester.pump(const Duration(milliseconds: 350));
+        await tester.pumpWidget(const SizedBox());
+        await tester.runAsync(app.shutdown);
+        await tester.pump();
+        tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          SystemChannels.platform,
+          null,
+        );
+      }
+    },
+  );
   testWidgets('input uncertainty remains visible with the composer hidden', (
     tester,
   ) async {

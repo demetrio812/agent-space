@@ -55,9 +55,19 @@ class WorkerTests(unittest.TestCase):
             sends=[r for r in h.calls if r['method'].startswith('pane.send')]
             self.assertEqual([(r['method'],r['params']) for r in sends],[
                 ('pane.send_input',{'pane_id':'p1','text':"/cache/a'post with space.png",'keys':[]})])
-            for value in [{'paste':'bad\x1b'}, {'paste':'line\n'}, {'paste':'x'*16385}, {'paste':'x','keys':['enter']}]:
+            for value in [{'paste':'bad\x1b'}, {'paste':'bad\r'}, {'paste':'x'*16385}, {'paste':'x','keys':['enter']}]:
                 with self.subTest(value=value), self.assertRaises(BridgeRejected): api.dispatch(route,value)
             self.assertEqual(len([r for r in h.calls if r['method'].startswith('pane.send')]),1)
+
+    def test_multiline_paste_preserves_text_and_never_appends_enter(self):
+        with FakeHerdr(self.root) as h:
+            api=LocalApi(h.socket_path,'peer'); c=api.catalog()
+            route={'generation':c['serverIdentity'],'terminal':'t1','pane':'p1'}
+            text='  first\n\tsecond café\n'
+            api.dispatch(route,{'paste':text})
+            sends=[r for r in h.calls if r['method'].startswith('pane.send')]
+            self.assertEqual([(r['method'],r['params']) for r in sends],[
+                ('pane.send_input',{'pane_id':'p1','text':text,'keys':[]})])
 
     def test_missing_ack_uncertain_and_one_delivery(self):
         with FakeHerdr(self.root) as h:

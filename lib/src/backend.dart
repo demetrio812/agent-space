@@ -456,7 +456,7 @@ class LocalHerdrBackend
     TerminalInput input,
   ) async {
     if (input.isPaste) {
-      throw SessionUnavailable('Image paste requires a persistent connection.');
+      throw SessionUnavailable('Terminal paste requires a persistent connection.');
     }
     if (input.clickCell != null) {
       throw SessionUnavailable(
@@ -953,7 +953,7 @@ class RemoteHerdrBackend
     TerminalInput input,
   ) async {
     if (input.isPaste && _bridge == null) {
-      throw SessionUnavailable('Image paste requires a persistent connection.');
+      throw SessionUnavailable('Terminal paste requires a persistent connection.');
     }
     if (input.clickCell != null) {
       throw SessionUnavailable(

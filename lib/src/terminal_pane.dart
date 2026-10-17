@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart' hide ConnectionState;
@@ -70,36 +69,6 @@ class _TerminalPaneState extends State<TerminalPane> {
     draftFocus.dispose();
     terminalController.dispose();
     super.dispose();
-  }
-
-  void pasteIntoComposer(String text) {
-    final id = widget.session.key.id;
-    final old = widget.app.layout.drafts[id] ?? '';
-    final value = '$old${old.isEmpty || old.endsWith('\n') ? '' : '\n'}$text';
-    if (utf8.encode(value).length > maxInputBytes) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Paste would exceed 16 KiB. Your existing draft was kept.',
-          ),
-        ),
-      );
-      return;
-    }
-    draft.value = TextEditingValue(
-      text: value,
-      selection: TextSelection.collapsed(offset: value.length),
-    );
-    widget.app.updateDraft(id, value);
-    setState(() => composerOpen = true);
-    draftFocus.requestFocus();
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          'Pasted text added to the message box. Review it, then Send.',
-        ),
-      ),
-    );
   }
 
   Future<void> copyTerminal() async {
@@ -532,7 +501,6 @@ class _TerminalPaneState extends State<TerminalPane> {
                               : null,
                           sendDraft: () =>
                               unawaited(app.sendDraft(session.key.id)),
-                          pasteIntoComposer: pasteIntoComposer,
                           preserveFocusWhilePaused:
                               (!app.isActive ||
                                   app.connectionState ==
@@ -764,7 +732,6 @@ class TerminalSurface extends StatefulWidget {
     this.onScroll,
     this.forwardMouseClicks = false,
     this.sendInput,
-    this.pasteIntoComposer,
     this.sendDraft,
     this.preserveFocusWhilePaused = false,
     this.autofocus = false,
@@ -779,7 +746,6 @@ class TerminalSurface extends StatefulWidget {
   final bool forwardMouseClicks;
   final bool autofocus;
   final void Function(TerminalInput)? sendInput;
-  final void Function(String)? pasteIntoComposer;
   final VoidCallback? sendDraft;
   final bool preserveFocusWhilePaused;
   @override
@@ -1018,7 +984,7 @@ class _TerminalSurfaceState extends State<TerminalSurface> {
     // Device-query replies are not user input. Only typing and fixed keys pass.
     if (data.startsWith('\x1b[200~') && data.endsWith('\x1b[201~')) {
       data = data.substring(6, data.length - 6);
-      _literal(data);
+      _literal(data, paste: true);
       return;
     }
     final key = switch (data) {
@@ -1037,15 +1003,14 @@ class _TerminalSurfaceState extends State<TerminalSurface> {
     }
   }
 
-  void _literal(String text) {
+  void _literal(String text, {bool paste = false}) {
     if (text.isEmpty) return;
-    if (text.contains('\n') || text.contains('\r') || text.contains('\t')) {
-      widget.pasteIntoComposer?.call(
-        text.replaceAll('\r\n', '\n').replaceAll('\r', '\n'),
-      );
-    } else {
-      widget.sendInput?.call(TerminalInput.text(text));
-    }
+    final normalized = text.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+    widget.sendInput?.call(
+      paste || normalized.contains('\n') || normalized.contains('\t')
+          ? TerminalInput.paste(normalized)
+          : TerminalInput.text(normalized),
+    );
   }
 
   Future<void> _paste() async {
@@ -1059,7 +1024,7 @@ class _TerminalSurfaceState extends State<TerminalSurface> {
     }
     final text =
         data?.text?.replaceAll('\r\n', '\n').replaceAll('\r', '\n') ?? '';
-    _literal(text);
+    _literal(text, paste: true);
   }
 
   KeyEventResult _key(FocusNode node, KeyEvent event) {

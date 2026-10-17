@@ -430,8 +430,10 @@ class TerminalInput {
       if (text.isEmpty || utf8.encode(text).length > maxInputBytes) {
         return 'Keep terminal typing under 16 KiB per batch.';
       }
-      if (RegExp(r'[\x00-\x1f\x7f-\x9f]').hasMatch(text) ||
-          utf8.decode(utf8.encode(text)) != text) {
+      final controls = isPaste
+          ? RegExp(r'[\x00-\x08\x0b-\x1f\x7f-\x9f]')
+          : RegExp(r'[\x00-\x1f\x7f-\x9f]');
+      if (controls.hasMatch(text) || utf8.decode(utf8.encode(text)) != text) {
         return 'Invalid terminal text.';
       }
     } else if (keyNames == null ||
