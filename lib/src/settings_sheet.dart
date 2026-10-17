@@ -252,7 +252,7 @@ class _SettingsState extends State<_Settings> {
               ),
               const SizedBox(height: 12),
               Text(
-                'Multi-line paste opens in the message box for review. Unconfirmed delivery stops further input until you check the terminal; input is never automatically retried.',
+                'Paste goes to the focused terminal, or to the message box when it is open and focused. Unconfirmed delivery stops further input until you check the terminal; input is never automatically retried.',
                 style: TextStyle(color: context.mutedInk, height: 1.5),
               ),
             ],
