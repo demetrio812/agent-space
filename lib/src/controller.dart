@@ -189,8 +189,8 @@ class AppController extends ChangeNotifier {
         : switch (s.status) {
             SessionStatus.needsInput => 0,
             SessionStatus.working => 1,
-            SessionStatus.idle => 2,
-            SessionStatus.done => 3,
+            SessionStatus.done => 2,
+            SessionStatus.idle => 3,
             SessionStatus.unknown => 4,
           };
     rows.sort((a, b) {
@@ -1769,25 +1769,56 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
+  bool get canReorderGrid =>
+      layout.gridSort == SessionSort.custom || layout.filter == 'favourites';
+
   void reorderFavourite(String id, String targetId) {
-    if (layout.filter != 'favourites' || id == targetId) return;
+    if (layout.filter == 'favourites') reorderGridSession(id, targetId);
+  }
+
+  void reorderGridSession(String id, String targetId) {
+    if (!canReorderGrid || id == targetId) return;
     final visible = visibleSessions.map((s) => s.key.id).toList();
     final oldIndex = visible.indexOf(id), newIndex = visible.indexOf(targetId);
     if (oldIndex < 0 || newIndex < 0) return;
-    final visibleIds = visible.toSet();
     visible.insert(newIndex, visible.removeAt(oldIndex));
-    final reordered = visible.iterator;
-    final order = sessionsForFilter('favourites').map((s) {
-      if (!visibleIds.contains(s.key.id)) return s.key.id;
-      reordered.moveNext();
-      return reordered.current;
-    }).toList();
-    layout.favouriteOrder
-      ..clear()
-      ..addAll(order);
+    _saveSessionOrder(visible);
     layout.gridSort = SessionSort.custom;
     _scheduleSave();
     notifyListeners();
+  }
+
+  void _saveSessionOrder(List<String> reordered) {
+    final List<String> destination;
+    final List<String> base;
+    if (layout.filter.startsWith('group:')) {
+      final group = layout.groups
+          .where((g) => 'group:${g.id}' == layout.filter)
+          .firstOrNull;
+      if (group == null) return;
+      destination = group.sessions;
+      base = List.of(destination);
+    } else if (layout.filter == 'favourites') {
+      destination = layout.favouriteOrder;
+      base = sessionsForFilter('favourites').map((s) => s.key.id).toList();
+    } else {
+      destination = layout.tabOrder;
+      base = {
+        ...destination,
+        ...sessionsForFilter('all').map((s) => s.key.id),
+      }.toList();
+    }
+    // Reorder only visible slots, preserving other computers, workspaces and
+    // sessions excluded by search, including temporarily unavailable entries.
+    final ids = reordered.toSet(), sequence = reordered.iterator;
+    final result = base.map((id) {
+      if (!ids.contains(id)) return id;
+      sequence.moveNext();
+      return sequence.current;
+    }).toList();
+    destination
+      ..clear()
+      ..addAll(result);
   }
 
   void reorderTabs(int oldIndex, int newIndex) {
@@ -1798,26 +1829,8 @@ class AppController extends ChangeNotifier {
         newIndex >= rows.length) {
       return;
     }
-    final id = rows.removeAt(oldIndex);
-    rows.insert(newIndex, id);
-    if (layout.filter.startsWith('group:')) {
-      final g = layout.groups
-          .where((g) => g.id == layout.filter.substring(6))
-          .firstOrNull;
-      if (g != null) {
-        g.sessions
-          ..clear()
-          ..addAll(rows);
-      }
-    } else if (layout.filter == 'favourites') {
-      layout.favouriteOrder
-        ..clear()
-        ..addAll(rows);
-    } else {
-      layout.tabOrder
-        ..clear()
-        ..addAll(rows);
-    }
+    rows.insert(newIndex, rows.removeAt(oldIndex));
+    _saveSessionOrder(rows);
     _scheduleSave();
     notifyListeners();
   }

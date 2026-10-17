@@ -166,6 +166,40 @@ void main() {
     final size = kind == PointerDeviceKind.mouse
         ? const Size(1200, 800)
         : const Size(390, 844);
+    testWidgets('custom All sessions grid drag reorders using $kind', (
+      tester,
+    ) async {
+      await tester.binding.setSurfaceSize(size);
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final app = await createApp();
+      try {
+        app.setFilter('all');
+        final ids = app.visibleSessions.map((s) => s.key.id).toList();
+        await tester.pumpWidget(
+          AgentSpaceApp(
+            controller: app,
+            desktop: kind == PointerDeviceKind.mouse,
+          ),
+        );
+        await tester.pumpAndSettle();
+        await moveItem(
+          tester,
+          find.byKey(ValueKey('tile-${ids[0]}')),
+          tester.getCenter(find.byKey(ValueKey('tile-${ids[1]}'))) +
+              const Offset(48, 0),
+          kind,
+        );
+        expect(app.visibleSessions.map((s) => s.key.id), [
+          ids[1],
+          ids[0],
+          ...ids.skip(2),
+        ]);
+        expect(app.layout.selectedId, isNull);
+        expect(tester.takeException(), isNull);
+      } finally {
+        await closeApp(tester, app);
+      }
+    });
     testWidgets('favourite grid drag reorders using $kind', (tester) async {
       await tester.binding.setSurfaceSize(size);
       addTearDown(() => tester.binding.setSurfaceSize(null));

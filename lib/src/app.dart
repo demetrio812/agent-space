@@ -1035,11 +1035,11 @@ class _SessionGridState extends State<_SessionGrid> {
           return DragTarget<String>(
             key: ValueKey('drop-${session.key.id}'),
             onWillAcceptWithDetails: (details) =>
-                widget.app.layout.filter == 'favourites' &&
+                widget.app.canReorderGrid &&
                 details.data != session.key.id &&
-                widget.app.isFavourite(details.data),
+                widget.app.visibleSessions.any((s) => s.key.id == details.data),
             onAcceptWithDetails: (details) =>
-                widget.app.reorderFavourite(details.data, session.key.id),
+                widget.app.reorderGridSession(details.data, session.key.id),
             builder: (context, candidates, rejected) => Stack(
               fit: StackFit.passthrough,
               children: [

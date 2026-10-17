@@ -102,6 +102,62 @@ void main() {
     },
   );
   test(
+    'status puts idle below completed, working and needs-input sessions',
+    () {
+      app.sessions = [
+        for (final status in SessionStatus.values)
+          SessionInfo(
+            key: SessionKey('demo', 'demo', 'server', status.name),
+            paneId: status.name,
+            title: status.name,
+            project: '',
+            agent: '',
+            status: status,
+          ),
+      ];
+      app.setGridSort(SessionSort.status);
+      expect(app.visibleSessions.map((s) => s.status), [
+        SessionStatus.needsInput,
+        SessionStatus.working,
+        SessionStatus.done,
+        SessionStatus.idle,
+        SessionStatus.unknown,
+      ]);
+    },
+  );
+  test('custom grid drag preserves hidden computer and search ordering', () {
+    final a = fixture.initial.first, b = fixture.initial.last;
+    final c = fixture.session(
+      machine: fixtureMachineA,
+      terminal: 't2',
+      label: 'Zebra',
+      workspace: 'w1',
+    );
+    app.sessions = [a, b, c];
+    app.layout.tabOrder.addAll([a.key.id, b.key.id, c.key.id]);
+    app.setFilter('computer:${a.computerId}');
+    app.reorderGridSession(a.key.id, c.key.id);
+    expect(app.visibleSessions, [c, a]);
+    app.setFilter('all');
+    expect(app.visibleSessions, [c, b, a]);
+    app.setSearch('Zebra');
+    app.reorderGridSession(c.key.id, a.key.id);
+    app.setSearch('');
+    expect(app.visibleSessions, [a, b, c]);
+    final restored = WorkspaceLayout.fromJson(app.layout.toJson());
+    expect(restored.tabOrder, [a.key.id, b.key.id, c.key.id]);
+    app.setFilter(a.workspaceFilterId);
+    app.reorderGridSession(a.key.id, c.key.id);
+    expect(app.visibleSessions, [c, a]);
+    app.layout.groups.add(
+      TabGroup('test', 'Test', [a.key.id, b.key.id, c.key.id]),
+    );
+    app.setFilter('group:test');
+    app.reorderGridSession(a.key.id, c.key.id);
+    expect(app.visibleSessions, [b, c, a]);
+    expect(app.layout.tabOrder, [c.key.id, b.key.id, a.key.id]);
+  });
+  test(
     'sorting and recent session order survive saving with safe defaults',
     () {
       app.select(fixture.initial.first.key.id);
