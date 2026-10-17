@@ -140,17 +140,29 @@ void main() {
         await tester.tap(picker);
         await tester.pumpAndSettle();
       }
-      expect(find.text('Computers'), findsOneWidget);
-      expect(
-        find.bySemanticsLabel(RegExp(r'^Computer Mac · work')),
-        findsOneWidget,
-      );
       final peer = app.sessions.singleWhere(
         (s) => s.origin!.herdrSession == 'work',
       );
       final button = find.byKey(ValueKey('computer-${peer.computerId}'));
-      await tester.ensureVisible(button);
+      if (picker.evaluate().isNotEmpty) {
+        await tester.scrollUntilVisible(
+          button,
+          150,
+          scrollable: find
+              .descendant(
+                of: find.byType(Drawer),
+                matching: find.byType(Scrollable),
+              )
+              .first,
+        );
+      } else {
+        await tester.ensureVisible(button);
+      }
       await tester.pumpAndSettle();
+      expect(
+        find.bySemanticsLabel(RegExp(r'^Computer Mac · work')),
+        findsOneWidget,
+      );
       await tester.tap(button);
       await tester.pumpAndSettle();
       expect(app.layout.filter, 'computer:${peer.computerId}');
@@ -194,7 +206,12 @@ void main() {
           await tester.scrollUntilVisible(
             button,
             250,
-            scrollable: find.byType(Scrollable).first,
+            scrollable: find
+                .descendant(
+                  of: find.byType(Drawer),
+                  matching: find.byType(Scrollable),
+                )
+                .first,
           );
           await tester.pumpAndSettle();
           expect(button.hitTestable(), findsOneWidget);

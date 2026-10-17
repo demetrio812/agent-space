@@ -6,6 +6,8 @@ macOS is the first release. Android uses the same adaptive interface and remote 
 
 Drag favourites to reorder them in either the grid or the horizontal strip above an open terminal. Mouse and trackpad drags start immediately; on touch, press and hold first. Both views share the saved order and scroll when you drag near an edge.
 
+Choose **Recent** in the sidebar to return to sessions you have opened, newest first, with their computer and workspace shown on each tile. The last 256 opened sessions are remembered per connection across launches. Background updates do not change this order, and sessions no longer in the current catalog are omitted. Recent always uses opening order; other views keep their saved sort and custom order.
+
 Scroll the open terminal with two fingers on a trackpad, a mouse wheel or a vertical touch gesture. Supported attached connections forward scrolling to Herdr, including its application-specific scroll handling; gestures do not become typed arrows or commands. Wheel events are preserved when batched, including Claude’s mouse reporting. Click terminal controls such as **Jump to bottom** directly.
 
 Use **Sort sessions** in the grid toolbar to choose Custom order, Name, Recently opened, Status, Computer or Workspace. The choice is saved for each connection. Status puts Needs input first, then Working, Done, Idle and Unknown; Recently opened tracks sessions opened in AgentSpace. In Custom order, drag tiles to reorder any grid; on touch, press and hold before dragging. Filtered views preserve the positions of hidden sessions. Dragging favourites switches the grid back to Custom order.

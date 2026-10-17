@@ -425,7 +425,8 @@ class _WorkspaceShellState extends State<_WorkspaceShell>
                                               'Find a session',
                                               beginSearch,
                                             ),
-                                          if (app.layout.selectedId == null)
+                                          if (app.layout.selectedId == null &&
+                                              app.layout.filter != 'recent')
                                             PopupMenuButton<SessionSort>(
                                               tooltip: 'Sort sessions',
                                               icon: const Icon(
@@ -661,6 +662,14 @@ class _Sidebar extends StatelessWidget {
                 Icons.star_outline,
                 app.layout.favourites.length,
                 key: const ValueKey('nav-favourites'),
+              ),
+              _row(
+                context,
+                'recent',
+                'Recent',
+                Icons.history,
+                app.sessionsForFilter('recent').length,
+                key: const ValueKey('nav-recent'),
               ),
               if (app.computers.isNotEmpty) ...[
                 _row(
@@ -958,6 +967,8 @@ class _SessionGridState extends State<_SessionGrid> {
                 Icon(
                   widget.app.layout.filter == 'favourites'
                       ? Icons.star_border_rounded
+                      : widget.app.layout.filter == 'recent'
+                      ? Icons.history
                       : Icons.space_dashboard_outlined,
                   size: 42,
                   color: const Color(0xff8c9eae),
@@ -968,6 +979,8 @@ class _SessionGridState extends State<_SessionGrid> {
                       ? 'No matching sessions'
                       : widget.app.layout.filter == 'favourites'
                       ? 'Keep your favourites here'
+                      : widget.app.layout.filter == 'recent'
+                      ? 'No recent sessions'
                       : widget.app.layout.filter.startsWith('group:')
                       ? 'Make room for your focus'
                       : 'No sessions yet',
@@ -982,6 +995,8 @@ class _SessionGridState extends State<_SessionGrid> {
                       ? 'Try another title, project or agent.'
                       : widget.app.layout.filter == 'favourites'
                       ? 'Star a session to add it to this collection.'
+                      : widget.app.layout.filter == 'recent'
+                      ? 'Open a session to find it here next time.'
                       : widget.app.layout.filter.startsWith('group:')
                       ? 'Add sessions from their menu, or drag them onto this group.'
                       : 'Start Herdr or try the demo in Settings.',
@@ -1208,7 +1223,9 @@ class SessionTile extends StatelessWidget {
                   const SizedBox(width: 5),
                   Expanded(
                     child: Text(
-                      app.computers.length > 1 && session.origin != null
+                      app.layout.filter == 'recent'
+                          ? '${app.computerLabel(session.computerId, origin: session.origin)} · ${session.workspaceLabel.isEmpty ? session.project : session.workspaceLabel}'
+                          : app.computers.length > 1 && session.origin != null
                           ? '${app.computerLabel(session.computerId, origin: session.origin)} · ${session.project}'
                           : session.project,
                       maxLines: 1,

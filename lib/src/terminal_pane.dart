@@ -213,6 +213,7 @@ class _TerminalPaneState extends State<TerminalPane> {
                     return SessionReorderStart(
                       key: ValueKey('tab-${tab.key.id}'),
                       index: i,
+                      enabled: app.layout.filter != 'recent',
                       child: Container(
                         width: 190,
                         margin: const EdgeInsets.only(right: 6),

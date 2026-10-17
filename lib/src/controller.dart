@@ -123,6 +123,15 @@ class AppController extends ChangeNotifier {
       layout.favourites[id]?.unavailable() ??
       layout.retained[id]?.unavailable();
   List<SessionInfo> sessionsForFilter(String filter) {
+    if (filter == 'recent') {
+      // Resolve against the current catalog, not retained metadata: closed
+      // sessions can remain in favourites but must disappear from Recent.
+      final current = {for (final session in sessions) session.key.id: session};
+      return layout.recentSessions
+          .map((id) => current[id])
+          .whereType<SessionInfo>()
+          .toList();
+    }
     Iterable<SessionInfo> rows;
     if (filter == 'favourites') {
       rows = layout.favourites.keys.map(sessionById).whereType<SessionInfo>();
@@ -176,7 +185,9 @@ class AppController extends ChangeNotifier {
                   .contains(search.toLowerCase()),
         )
         .toList();
-    if (layout.gridSort == SessionSort.custom) return rows;
+    if (layout.filter == 'recent' || layout.gridSort == SessionSort.custom) {
+      return rows;
+    }
     int compareText(String a, String b) =>
         a.toLowerCase().compareTo(b.toLowerCase());
     int recentRank(SessionInfo s) {
@@ -244,6 +255,7 @@ class AppController extends ChangeNotifier {
     final filter = layout.filter;
     if (filter.startsWith('computer:')) return filter.substring(9);
     if (filter == 'all' ||
+        filter == 'recent' ||
         filter == 'favourites' ||
         filter.startsWith('group:')) {
       return null;
@@ -296,6 +308,7 @@ class AppController extends ChangeNotifier {
   String get filterLabel {
     final filter = layout.filter;
     if (filter == 'all') return 'All sessions';
+    if (filter == 'recent') return 'Recent';
     if (filter == 'favourites') return 'Favourites';
     if (filter.startsWith('computer:')) {
       return computerLabel(filter.substring(9));
@@ -565,6 +578,7 @@ class AppController extends ChangeNotifier {
     }
     final filter = layout.filter;
     if (filter != 'all' &&
+        filter != 'recent' &&
         filter != 'favourites' &&
         !filter.startsWith('group:') &&
         !filter.startsWith('computer:') &&
@@ -1770,7 +1784,8 @@ class AppController extends ChangeNotifier {
   }
 
   bool get canReorderGrid =>
-      layout.gridSort == SessionSort.custom || layout.filter == 'favourites';
+      layout.filter != 'recent' &&
+      (layout.gridSort == SessionSort.custom || layout.filter == 'favourites');
 
   void reorderFavourite(String id, String targetId) {
     if (layout.filter == 'favourites') reorderGridSession(id, targetId);
@@ -1822,6 +1837,7 @@ class AppController extends ChangeNotifier {
   }
 
   void reorderTabs(int oldIndex, int newIndex) {
+    if (layout.filter == 'recent') return;
     final rows = sessionsForFilter(layout.filter).map((s) => s.key.id).toList();
     if (oldIndex < 0 ||
         oldIndex >= rows.length ||

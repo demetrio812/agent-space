@@ -116,13 +116,15 @@ class SessionReorderStart extends StatelessWidget {
     super.key,
     required this.index,
     required this.child,
+    this.enabled = true,
   });
   final int index;
   final Widget child;
+  final bool enabled;
   @override
   Widget build(BuildContext context) => Listener(
     onPointerDown: (event) {
-      if (event.buttons != kPrimaryButton) return;
+      if (!enabled || event.buttons != kPrimaryButton) return;
       final MultiDragGestureRecognizer recognizer =
           event.kind == PointerDeviceKind.mouse ||
               event.kind == PointerDeviceKind.trackpad

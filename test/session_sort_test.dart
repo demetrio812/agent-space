@@ -33,6 +33,41 @@ void main() {
     await app.shutdown();
     await directory.delete(recursive: true);
   });
+  test('Recent shows only opened sessions, newest first, without changing other sorts', () async {
+    final a = fixture.initial.first, b = fixture.initial.last;
+    app.setFilter('recent');
+    expect(app.visibleSessions, isEmpty);
+    app.select(a.key.id);
+    app.select(b.key.id);
+    app.select(a.key.id);
+    app.overview();
+    app.setGridSort(SessionSort.name);
+    expect(app.visibleSessions, [a, b]);
+    expect(app.filterLabel, 'Recent');
+    expect(app.selectedComputerId, isNull);
+    expect(app.canReorderGrid, isFalse);
+    app.reorderGridSession(a.key.id, b.key.id);
+    app.reorderTabs(0, 1);
+    expect(app.sessionsForFilter('recent'), [a, b]);
+    await app.refresh();
+    expect(app.visibleSessions, [a, b]);
+    app.setSearch('Alpha');
+    expect(app.visibleSessions, [b]);
+    app.setSearch('');
+    final restored = AppSnapshot.fromJson(app.snapshot.toJson());
+    final other = fixture.controller(directory, snapshot: restored);
+    await other.start(polling: false);
+    expect(other.layout.filter, 'recent');
+    expect(other.visibleSessions.map((s) => s.key.id), [a.key.id, b.key.id]);
+    await other.shutdown();
+    expect(app.layout.gridSort, SessionSort.name);
+    // A closed session must not be resurrected from retained/favourite metadata.
+    app.toggleFavourite(a);
+    app.sessions = [b];
+    expect(app.visibleSessions, [b]);
+    app.setFilter('all');
+    expect(app.visibleSessions, [b]);
+  });
   test(
     'sorts grid while retaining filters and saved custom favourite order',
     () {
