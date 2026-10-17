@@ -8,6 +8,10 @@ Drag favourites to reorder them in either the grid or the horizontal strip above
 
 Scroll the open terminal with two fingers on a trackpad, a mouse wheel or a vertical touch gesture. Supported attached connections forward scrolling to Herdr, including its application-specific scroll handling; gestures do not become typed arrows or commands. Wheel events are preserved when batched, including Claude’s mouse reporting. Click terminal controls such as **Jump to bottom** directly.
 
+Use **Sort sessions** in the grid toolbar to choose Custom order, Name, Recently opened, Status, Computer or Workspace. The choice is saved for each connection. Status puts sessions needing input first; Recently opened tracks sessions opened in AgentSpace. Dragging favourites switches the grid back to Custom order.
+
+Opening or switching a session focuses its terminal for immediate typing. Brief app switches retain the connection; after longer background periods, AgentSpace reconnects while keeping the cached view, selection, search and drafts visible. The operating system may still suspend network connections in the background.
+
 ## Screenshots
 
 Captured on macOS using the built-in Demo source. All session names, workspaces and terminal output shown here are synthetic.

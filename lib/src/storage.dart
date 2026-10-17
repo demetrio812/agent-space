@@ -46,6 +46,8 @@ class WorkspaceLayout {
   final groups = <TabGroup>[];
   final tabOrder = <String>[];
   final favouriteOrder = <String>[];
+  final recentSessions = <String>[];
+  SessionSort gridSort = SessionSort.custom;
   String? selectedId;
   String filter = 'all';
   double zoom = 1;
@@ -64,6 +66,8 @@ class WorkspaceLayout {
     'groups': groups.take(32).map((g) => g.toJson()).toList(),
     'tabOrder': tabOrder.take(4096).toList(),
     'favouriteOrder': favouriteOrder.take(256).toList(),
+    'gridSort': gridSort.name,
+    'recentSessions': recentSessions.take(256).toList(),
     'selected': selectedId,
     'filter': filter,
     'zoom': zoom,
@@ -131,6 +135,20 @@ class WorkspaceLayout {
         (j['favouriteOrder'] as List)
             .whereType<String>()
             .where(result.favourites.containsKey)
+            .toSet()
+            .take(256),
+      );
+    }
+    result.gridSort =
+        SessionSort.values
+            .where((value) => value.name == j['gridSort'])
+            .firstOrNull ??
+        SessionSort.custom;
+    if (j['recentSessions'] is List) {
+      result.recentSessions.addAll(
+        (j['recentSessions'] as List)
+            .whereType<String>()
+            .where((id) => SessionKey.decode(id) != null)
             .toSet()
             .take(256),
       );

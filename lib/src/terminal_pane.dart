@@ -509,6 +509,7 @@ class _TerminalPaneState extends State<TerminalPane> {
                         app: app,
                         sessionId: session.key.id,
                         child: TerminalSurface(
+                          autofocus: true,
                           terminal: terminal,
                           controller: terminalController,
                           zoom: app.layout.zoom,
@@ -532,7 +533,9 @@ class _TerminalPaneState extends State<TerminalPane> {
                               unawaited(app.sendDraft(session.key.id)),
                           pasteIntoComposer: pasteIntoComposer,
                           preserveFocusWhilePaused:
-                              app.connectionState == ConnectionState.stale &&
+                              (!app.isActive ||
+                                  app.connectionState ==
+                                      ConnectionState.stale) &&
                               state?.uncertain != true,
                           sendInput: app.canSendTerminalInput(session.key.id)
                               ? (input) =>
@@ -763,6 +766,7 @@ class TerminalSurface extends StatefulWidget {
     this.pasteIntoComposer,
     this.sendDraft,
     this.preserveFocusWhilePaused = false,
+    this.autofocus = false,
   });
   final Terminal terminal;
   final TerminalController controller;
@@ -772,6 +776,7 @@ class TerminalSurface extends StatefulWidget {
   final void Function(int, int)? onViewport;
   final Future<void> Function(int)? onScroll;
   final bool forwardMouseClicks;
+  final bool autofocus;
   final void Function(TerminalInput)? sendInput;
   final void Function(String)? pasteIntoComposer;
   final VoidCallback? sendDraft;
@@ -931,6 +936,27 @@ class _TerminalSurfaceState extends State<TerminalSurface> {
     super.initState();
     focus.addListener(_focusChanged);
     _attach();
+    _focusWhenReady();
+  }
+
+  bool _needsInitialFocus = true;
+
+  void _focusWhenReady() {
+    if (!widget.autofocus || !_needsInitialFocus || widget.sendInput == null) {
+      return;
+    }
+    final id = widget.inputId;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted ||
+          widget.inputId != id ||
+          widget.sendInput == null ||
+          !_needsInitialFocus ||
+          ModalRoute.of(context)?.isCurrent == false) {
+        return;
+      }
+      _needsInitialFocus = false;
+      focus.requestFocus();
+    });
   }
 
   void _focusChanged() {
@@ -963,11 +989,13 @@ class _TerminalSurfaceState extends State<TerminalSurface> {
       _detach(oldWidget.terminal);
       _attach();
     }
+    if (oldWidget.inputId != widget.inputId) _needsInitialFocus = true;
     if ((widget.sendInput == null && !widget.preserveFocusWhilePaused ||
             oldWidget.inputId != widget.inputId) &&
         focus.hasFocus) {
       focus.unfocus();
     }
+    _focusWhenReady();
   }
 
   @override

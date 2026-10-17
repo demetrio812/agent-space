@@ -425,6 +425,27 @@ class _WorkspaceShellState extends State<_WorkspaceShell>
                                               'Find a session',
                                               beginSearch,
                                             ),
+                                          if (app.layout.selectedId == null)
+                                            PopupMenuButton<SessionSort>(
+                                              tooltip: 'Sort sessions',
+                                              icon: const Icon(
+                                                Icons.sort,
+                                                size: 21,
+                                              ),
+                                              initialValue: app.layout.gridSort,
+                                              onSelected: app.setGridSort,
+                                              itemBuilder: (_) => [
+                                                for (final order
+                                                    in SessionSort.values)
+                                                  CheckedPopupMenuItem(
+                                                    value: order,
+                                                    checked:
+                                                        app.layout.gridSort ==
+                                                        order,
+                                                    child: Text(order.label),
+                                                  ),
+                                              ],
+                                            ),
                                           IconButton(
                                             tooltip: 'New session',
                                             onPressed: () =>

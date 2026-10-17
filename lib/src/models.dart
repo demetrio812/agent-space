@@ -31,6 +31,18 @@ String displayText(Object? value) {
   return clean.length > 256 ? clean.substring(0, 256) : clean;
 }
 
+enum SessionSort {
+  custom('Custom order'),
+  name('Name'),
+  recent('Recently opened'),
+  status('Status'),
+  computer('Computer'),
+  workspace('Workspace');
+
+  const SessionSort(this.label);
+  final String label;
+}
+
 enum SessionStatus {
   done,
   needsInput,

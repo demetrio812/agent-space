@@ -27,34 +27,40 @@ void main() {
     await app.shutdown();
     await directory.delete(recursive: true);
   });
-  test('computer scope follows workspace selection and All clears it', () async {
-    final a = fixture.session(machine: fixtureMachineA);
-    final a2 = fixture.session(
-      machine: fixtureMachineA, terminal: 't2', workspace: 'w2',
-    );
-    final b = fixture.session(machine: fixtureMachineB);
-    fixture.initial = [a, a2, b];
-    await app.start(polling: false);
-    expect(app.sidebarWorkspaces.length, 3);
-    app.setFilter('computer:${a.computerId}');
-    expect(app.selectedComputerId, a.computerId);
-    expect(app.sidebarWorkspaces.keys, unorderedEquals([
-      a.workspaceFilterId, a2.workspaceFilterId,
-    ]));
-    expect(app.visibleSessions, unorderedEquals([a, a2]));
-    app.setFilter(a.workspaceFilterId);
-    expect(app.selectedComputerId, a.computerId);
-    expect(app.sidebarWorkspaces.length, 2);
-    expect(app.visibleSessions.single, a);
-    app.setFilter('computer:missing');
-    expect(app.sidebarWorkspaces, isEmpty);
-    app.setFilter('all');
-    expect(app.selectedComputerId, isNull);
-    expect(app.sidebarWorkspaces.length, 3);
-    expect(app.visibleSessions.length, 3);
-    app.setFilter('favourites');
-    expect(app.sidebarWorkspaces.length, 3);
-  });
+  test(
+    'computer scope follows workspace selection and All clears it',
+    () async {
+      final a = fixture.session(machine: fixtureMachineA);
+      final a2 = fixture.session(
+        machine: fixtureMachineA,
+        terminal: 't2',
+        workspace: 'w2',
+      );
+      final b = fixture.session(machine: fixtureMachineB);
+      fixture.initial = [a, a2, b];
+      await app.start(polling: false);
+      expect(app.sidebarWorkspaces.length, 3);
+      app.setFilter('computer:${a.computerId}');
+      expect(app.selectedComputerId, a.computerId);
+      expect(
+        app.sidebarWorkspaces.keys,
+        unorderedEquals([a.workspaceFilterId, a2.workspaceFilterId]),
+      );
+      expect(app.visibleSessions, unorderedEquals([a, a2]));
+      app.setFilter(a.workspaceFilterId);
+      expect(app.selectedComputerId, a.computerId);
+      expect(app.sidebarWorkspaces.length, 2);
+      expect(app.visibleSessions.single, a);
+      app.setFilter('computer:missing');
+      expect(app.sidebarWorkspaces, isEmpty);
+      app.setFilter('all');
+      expect(app.selectedComputerId, isNull);
+      expect(app.sidebarWorkspaces.length, 3);
+      expect(app.visibleSessions.length, 3);
+      app.setFilter('favourites');
+      expect(app.sidebarWorkspaces.length, 3);
+    },
+  );
   test(
     'incremental offline peer preserves other live session and favourite draft',
     () async {
@@ -112,11 +118,50 @@ void main() {
     expect(app.visibleSessions, contains(peer));
   });
   test(
+    'brief background keeps connection, screen, selection and search',
+    () async {
+      final a = fixture.session(machine: 'gateway');
+      fixture.initial = [a];
+      await app.start(polling: false);
+      app.select(a.key.id);
+      app.setSearch('Mac');
+      await settleNetwork();
+      final entry = app.terminals[a.key.id]!;
+      final subscription = entry.subscription;
+      await app.setActive(false);
+      expect(fixture.closed, false);
+      expect(entry.subscription, same(subscription));
+      expect(app.canSendTerminalInput(a.key.id), false);
+      await app.setActive(true);
+      expect(app.terminals[a.key.id], same(entry));
+      expect(entry.subscription, same(subscription));
+      expect(app.search, 'Mac');
+      expect(app.layout.selectedId, a.key.id);
+    },
+  );
+  test('long background reconnect preserves cached view and search', () async {
+    final a = fixture.session(machine: 'gateway');
+    fixture.initial = [a];
+    await app.start(polling: false);
+    app.select(a.key.id);
+    app.setSearch('Mac');
+    await settleNetwork();
+    final entry = app.terminals[a.key.id]!;
+    await app.setActive(false, gracePeriod: const Duration(milliseconds: 1));
+    await settleNetwork();
+    expect(fixture.closed, true);
+    await app.setActive(true);
+    expect(app.terminals[a.key.id], same(entry));
+    expect(entry.screen.text, contains('fixture'));
+    expect(app.search, 'Mac');
+    expect(app.layout.selectedId, a.key.id);
+  });
+  test(
     'background closes gateway workers then resume creates a fresh backend',
     () async {
       fixture.initial = [fixture.session(machine: 'gateway')];
       await app.start(polling: false);
-      await app.setActive(false);
+      await app.setActive(false, gracePeriod: Duration.zero);
       expect(fixture.closed, true);
       await app.setActive(true);
       expect(app.connectionState, ConnectionState.live);

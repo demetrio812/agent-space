@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:xterm/xterm.dart';
 import 'package:agentspace/src/app.dart';
 import 'package:agentspace/src/controller.dart';
+import 'package:agentspace/src/models.dart';
 import 'package:agentspace/src/network_models.dart';
 import 'package:agentspace/src/storage.dart';
 
@@ -50,6 +51,20 @@ void main() {
     return app;
   }
 
+  for (final size in [const Size(320, 568), const Size(1024, 768)]) {
+    testWidgets('grid sort menu works at $size', (tester) async {
+      await tester.binding.setSurfaceSize(size);
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final app = await create(tester);
+      await tester.tap(find.byTooltip('Sort sessions'));
+      await tester.pumpAndSettle();
+      expect(find.text('Recently opened'), findsOneWidget);
+      await tester.tap(find.text('Name').last);
+      await tester.pumpAndSettle();
+      expect(app.layout.gridSort, SessionSort.name);
+      expect(tester.takeException(), isNull);
+    });
+  }
   for (final size in [const Size(390, 844), const Size(1366, 1024)]) {
     testWidgets('sidebar scopes workspaces and All restores them at $size', (
       tester,

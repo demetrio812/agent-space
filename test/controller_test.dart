@@ -156,7 +156,7 @@ void main() {
       );
       await Future<void>.delayed(Duration.zero);
       expect(app.terminals[session.key.id]!.screen.text, contains('live'));
-      await app.setActive(false);
+      await app.setActive(false, gracePeriod: Duration.zero);
       expect(backend.cancels, 1);
     },
   );

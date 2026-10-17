@@ -12,6 +12,52 @@ import 'fixtures/fake_bridge.dart';
 
 void main() {
   testWidgets(
+    'iPad touch, wheel and trackpad gestures scroll the remote terminal',
+    (tester) async {
+      final terminal = Terminal()
+        ..resize(80, 24)
+        ..write('\x1b[?1049hFixture');
+      final scrolled = <int>[];
+      final typed = <Object>[];
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData(platform: TargetPlatform.iOS),
+          home: TerminalSurface(
+            terminal: terminal,
+            controller: TerminalController(),
+            zoom: 1,
+            inputId: 'ipad',
+            copy: () async {},
+            sendInput: typed.add,
+            onScroll: (lines) async => scrolled.add(lines),
+          ),
+        ),
+      );
+      final target = tester.getCenter(find.byType(TerminalSurface));
+      await tester.drag(find.byType(TerminalSurface), const Offset(0, 120));
+      await tester.pump(const Duration(milliseconds: 40));
+      expect(scrolled, isNotEmpty);
+      expect(scrolled.reduce((a, b) => a + b), lessThan(0));
+      scrolled.clear();
+      tester.binding.handlePointerEvent(
+        PointerScrollEvent(position: target, scrollDelta: const Offset(0, 120)),
+      );
+      await tester.pump(const Duration(milliseconds: 40));
+      expect(scrolled.single, greaterThan(0));
+      scrolled.clear();
+      final trackpad = await tester.createGesture(
+        kind: PointerDeviceKind.trackpad,
+      );
+      await trackpad.panZoomStart(target);
+      await trackpad.panZoomUpdate(target, pan: const Offset(0, 120));
+      await trackpad.panZoomEnd();
+      await tester.pump(const Duration(milliseconds: 40));
+      expect(scrolled.single, lessThan(0));
+      expect(typed, isEmpty);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+  testWidgets(
     'wheel and trackpad scroll the attached pane without typing or stealing focus',
     (tester) async {
       final terminal = Terminal()

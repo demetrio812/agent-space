@@ -113,6 +113,9 @@ class AppController extends ChangeNotifier {
   bool _polling = true, _active = true, _disposed = false;
   int? _refreshGeneration;
   Future<void>? _shutdownFuture;
+  Timer? _backgroundTimer;
+  Future<void>? _suspending;
+  bool get isActive => _active;
   SessionInfo? get selectedSession =>
       layout.selectedId == null ? null : sessionById(layout.selectedId!);
   SessionInfo? sessionById(String id) =>
@@ -163,15 +166,61 @@ class AppController extends ChangeNotifier {
     return result;
   }
 
-  List<SessionInfo> get visibleSessions => sessionsForFilter(layout.filter)
-      .where(
-        (s) =>
-            search.isEmpty ||
-            '${s.title} ${s.project} ${s.agent} ${s.workspaceLabel} ${s.origin?.machineLabel ?? ''} ${s.origin?.herdrSession ?? ''}'
-                .toLowerCase()
-                .contains(search.toLowerCase()),
-      )
-      .toList();
+  List<SessionInfo> get visibleSessions {
+    final rows = sessionsForFilter(layout.filter)
+        .where(
+          (s) =>
+              search.isEmpty ||
+              '${s.title} ${s.project} ${s.agent} ${s.workspaceLabel} ${s.origin?.machineLabel ?? ''} ${s.origin?.herdrSession ?? ''}'
+                  .toLowerCase()
+                  .contains(search.toLowerCase()),
+        )
+        .toList();
+    if (layout.gridSort == SessionSort.custom) return rows;
+    int compareText(String a, String b) =>
+        a.toLowerCase().compareTo(b.toLowerCase());
+    int recentRank(SessionInfo s) {
+      final index = layout.recentSessions.indexOf(s.key.id);
+      return index < 0 ? 999999 : index;
+    }
+
+    int statusRank(SessionInfo s) => !s.available
+        ? 5
+        : switch (s.status) {
+            SessionStatus.needsInput => 0,
+            SessionStatus.working => 1,
+            SessionStatus.idle => 2,
+            SessionStatus.done => 3,
+            SessionStatus.unknown => 4,
+          };
+    rows.sort((a, b) {
+      final primary = switch (layout.gridSort) {
+        SessionSort.custom => 0,
+        SessionSort.name => compareText(a.title, b.title),
+        SessionSort.recent => recentRank(a).compareTo(recentRank(b)),
+        SessionSort.status => statusRank(a).compareTo(statusRank(b)),
+        SessionSort.computer => compareText(
+          computerLabel(a.computerId, origin: a.origin),
+          computerLabel(b.computerId, origin: b.origin),
+        ),
+        SessionSort.workspace => compareText(
+          a.workspaceLabel,
+          b.workspaceLabel,
+        ),
+      };
+      if (primary != 0) return primary;
+      final title = compareText(a.title, b.title);
+      return title != 0 ? title : a.key.id.compareTo(b.key.id);
+    });
+    return rows;
+  }
+
+  void setGridSort(SessionSort value) {
+    layout.gridSort = value;
+    _scheduleSave();
+    notifyListeners();
+  }
+
   Map<String, String> get workspaces {
     final result = <String, String>{};
     final origins = <String, Set<String>>{};
@@ -552,6 +601,7 @@ class AppController extends ChangeNotifier {
     layout.favouriteOrder
       ..clear()
       ..addAll(order);
+    layout.gridSort = SessionSort.custom;
     _scheduleSave();
     notifyListeners();
   }
@@ -578,6 +628,10 @@ class AppController extends ChangeNotifier {
     if (session == null) return;
     if (layout.selectedId != id) _cancelTerminalInput();
     layout.selectedId = id;
+    layout.recentSessions
+      ..remove(id)
+      ..insert(0, id);
+    if (layout.recentSessions.length > 256) layout.recentSessions.removeLast();
     layout.retained[id] = session;
     _previewTargets.clear();
     _syncStreams();
@@ -898,35 +952,77 @@ class AppController extends ChangeNotifier {
     }
   }
 
-  Future<void> setActive(bool active) async {
+  Future<void> _releaseBackgroundConnection() async {
+    if (_backend is NetworkCatalogBackend) {
+      connectionState = ConnectionState.stale;
+      connectionMessage = 'Connection paused';
+    }
+    await _cancelDiscovery();
+    await Future.wait(terminals.values.map(_stopEntry));
+    if (_backend is NetworkCatalogBackend) {
+      final old = _backend;
+      _backend = null;
+      await old?.close();
+    }
+  }
+
+  Future<void> setActive(
+    bool active, {
+    Duration gracePeriod = const Duration(seconds: 20),
+  }) async {
     if (_disposed || _active == active) return;
     _active = active;
+    _backgroundTimer?.cancel();
+    _backgroundTimer = null;
     if (!active) {
       _cancelSessionActions();
       _cancelTerminalInput();
       _poll?.cancel();
-      _cancelDiscovery();
-      await Future.wait(terminals.values.map(_stopEntry));
-      if (_backend is NetworkCatalogBackend) {
-        final old = _backend;
-        _backend = null;
-        await old?.close();
-      }
-      await flush();
-    } else {
-      if (_backend == null) {
-        await switchSource(source);
+      final discoveryStopping = _cancelDiscovery();
+      // Brief app switches keep their transport and terminal subscriptions.
+      // Input is disabled immediately, regardless of this grace period.
+      if (gracePeriod == Duration.zero) {
+        await (_suspending = _releaseBackgroundConnection());
       } else {
-        await refresh();
+        _backgroundTimer = Timer(gracePeriod, () {
+          _backgroundTimer = null;
+          _suspending = _releaseBackgroundConnection();
+          unawaited(_suspending!.catchError((Object _) {}));
+        });
       }
-      _syncStreams();
-      if (_polling && connectionState != ConnectionState.attention) {
-        _poll = Timer.periodic(
-          const Duration(seconds: 2),
-          (_) => unawaited(refresh()),
-        );
-      }
+      await discoveryStopping;
+      await flush();
+      return;
     }
+    // A slow close must finish before its replacement is created.
+    try {
+      await _suspending;
+    } catch (_) {
+      // Refresh below reports the current connection state.
+    }
+    _suspending = null;
+    if (_disposed || !_active) return;
+    try {
+      _backend ??= backendFactory(source);
+    } catch (_) {
+      connectionState = ConnectionState.attention;
+      connectionMessage = 'This connection is unavailable. Reconnect or choose another source in Settings.';
+      notifyListeners();
+      return;
+    }
+    // Keep cached sessions, screens, search, drafts and selection visible.
+    // switchSource would discard all of them even though the source is unchanged.
+    await refresh();
+    if (_disposed || !_active) return;
+    _syncStreams();
+    if (_polling && connectionState != ConnectionState.attention) {
+      _poll?.cancel();
+      _poll = Timer.periodic(
+        const Duration(seconds: 2),
+        (_) => unawaited(refresh()),
+      );
+    }
+    notifyListeners();
   }
 
   void updateDraft(String id, String text) {
@@ -1689,6 +1785,7 @@ class AppController extends ChangeNotifier {
     layout.favouriteOrder
       ..clear()
       ..addAll(order);
+    layout.gridSort = SessionSort.custom;
     _scheduleSave();
     notifyListeners();
   }
@@ -1786,6 +1883,10 @@ class AppController extends ChangeNotifier {
   Future<void> _shutdown() async {
     if (_disposed) return;
     _disposed = true;
+    _backgroundTimer?.cancel();
+    try {
+      await _suspending;
+    } catch (_) {}
     _cancelSessionActions();
     _cancelTerminalInput();
     _generation++;

@@ -90,6 +90,64 @@ class WidgetStore extends LayoutStore {
 }
 
 void main() {
+  for (final platform in [TargetPlatform.macOS, TargetPlatform.iOS]) {
+    testWidgets('opening and switching sessions focuses typing on $platform', (
+      tester,
+    ) async {
+      final first = Terminal()..write('First');
+      final second = Terminal()..write('Second');
+      final received = <String>[];
+      Future<void> mount(
+        String id,
+        Terminal terminal, {
+        bool ready = true,
+      }) async {
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: ThemeData(platform: platform),
+            home: Scaffold(
+              body: Column(
+                children: [
+                  const TextField(),
+                  Expanded(
+                    child: TerminalSurface(
+                      terminal: terminal,
+                      controller: TerminalController(),
+                      zoom: 1,
+                      inputId: id,
+                      copy: () async {},
+                      autofocus: true,
+                      sendInput: ready ? (_) => received.add(id) : null,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+      }
+
+      await mount('first', first);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+      expect(received, ['first']);
+      await mount('second', second, ready: false);
+      await mount('second', second);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      expect(received, ['first', 'second']);
+      await tester.tap(find.byType(TextField));
+      await tester.pump();
+      await mount('second', second);
+      expect(
+        tester
+            .widget<TerminalView>(find.byType(TerminalView))
+            .focusNode!
+            .hasFocus,
+        isFalse,
+      );
+      await tester.pumpWidget(const SizedBox());
+    });
+  }
   for (final viaMenu in [true, false]) {
     testWidgets(
       'Mac ${viaMenu ? 'native Paste command' : 'Cmd+V'} inserts once without Enter',
