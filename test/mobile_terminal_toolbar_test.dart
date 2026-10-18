@@ -261,4 +261,69 @@ void main() {
       }
     },
   );
+  for (final size in [const Size(390, 844), const Size(844, 390)]) {
+    testWidgets('status overlay stays centred above the keyboard at $size', (
+      tester,
+    ) async {
+      await tester.binding.setSurfaceSize(size);
+      tester.view.devicePixelRatio = 1;
+      tester.view.viewInsets = FakeViewPadding(
+        bottom: size.height > 500 ? 300 : 190,
+      );
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetViewInsets);
+      final backend = InputFixture();
+      final app = AppController(
+        snapshot: AppSnapshot(),
+        store: WidgetStore(),
+        backendFactory: (_) => backend,
+      );
+      try {
+        await app.start(polling: false);
+        app.select(backend.session.key.id);
+        await tester.pumpWidget(AgentSpaceApp(controller: app, desktop: false));
+        await tester.pump(const Duration(milliseconds: 800));
+        final keyboardVisible = tester.testTextInput.isVisible;
+        await tester.tap(find.byTooltip('Terminal status & more'));
+        await tester.pumpAndSettle();
+        final rect = tester.getRect(
+          find
+              .descendant(
+                of: find.byType(Dialog),
+                matching: find.byWidgetPredicate(
+                  (w) => w is Material && w.type == MaterialType.card,
+                ),
+              )
+              .first,
+        );
+        final available = size.height - tester.view.viewInsets.bottom;
+        expect(rect.bottom, lessThanOrEqualTo(available));
+        expect(rect.top, greaterThanOrEqualTo(0));
+        expect(rect.center.dx, closeTo(size.width / 2, 1));
+        expect(rect.center.dy, closeTo(available / 2, 1));
+        expect(tester.testTextInput.isVisible, keyboardVisible);
+        expect(find.text('Reconnect terminal'), findsOneWidget);
+        // The whole details section remains reachable in short landscape space.
+        await tester.ensureVisible(find.text('1/16 live'));
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        await tester.ensureVisible(find.byTooltip('Close terminal status'));
+        await tester.tap(find.byTooltip('Close terminal status'));
+        await tester.pumpAndSettle();
+        expect(find.byType(Dialog), findsNothing);
+        expect(
+          tester
+              .widget<TerminalView>(find.byType(TerminalView))
+              .focusNode!
+              .hasFocus,
+          isTrue,
+        );
+        expect(backend.input, isEmpty);
+      } finally {
+        await tester.pumpWidget(const SizedBox());
+        await tester.runAsync(app.shutdown);
+      }
+    });
+  }
 }

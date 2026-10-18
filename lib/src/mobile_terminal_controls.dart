@@ -98,10 +98,104 @@ class MobileTerminalStatusMenu extends StatelessWidget {
     child: SizedBox(
       width: 44,
       height: 44,
-      child: PopupMenuButton<String>(
+      child: IconButton(
         tooltip: 'Terminal status & more',
-        requestFocus: false,
         padding: EdgeInsets.zero,
+        onPressed: () async {
+          final reconnect = await showDialog<bool>(
+            context: context,
+            requestFocus: false,
+            builder: (dialogContext) => AlertDialog(
+              key: const ValueKey('terminal-status-overlay'),
+              scrollable: true,
+              insetPadding: const EdgeInsets.symmetric(
+                horizontal: 20,
+                vertical: 12,
+              ),
+              backgroundColor: dialogContext.panel,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(22),
+                side: BorderSide(color: dialogContext.border),
+              ),
+              titlePadding: const EdgeInsets.fromLTRB(20, 12, 8, 0),
+              title: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Terminal status',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        color: dialogContext.ink,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Close terminal status',
+                    onPressed: () => Navigator.pop(dialogContext),
+                    icon: const Icon(Icons.close, size: 20),
+                  ),
+                ],
+              ),
+              contentPadding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
+              content: SizedBox(
+                width: 320,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.only(top: 3),
+                          child: Icon(
+                            warning
+                                ? Icons.info_outline
+                                : Icons.check_circle_outline,
+                            size: 18,
+                            color: warning
+                                ? dialogContext.attention
+                                : const Color(0xff7ab894),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            summary,
+                            style: TextStyle(
+                              color: dialogContext.ink,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    for (final text in {...details}..remove(summary))
+                      Padding(
+                        padding: const EdgeInsets.only(top: 12),
+                        child: Text(
+                          text,
+                          style: TextStyle(
+                            color: dialogContext.mutedInk,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton.icon(
+                  onPressed: () => Navigator.pop(dialogContext, true),
+                  icon: const Icon(Icons.refresh, size: 18),
+                  label: const Text('Reconnect terminal'),
+                ),
+              ],
+            ),
+          );
+          if (reconnect == true && context.mounted) onReconnect();
+        },
         icon: Stack(
           clipBehavior: Clip.none,
           children: [
@@ -117,22 +211,6 @@ class MobileTerminalStatusMenu extends StatelessWidget {
             ),
           ],
         ),
-        onSelected: (_) => onReconnect(),
-        itemBuilder: (_) => [
-          for (final text in {summary, ...details})
-            PopupMenuItem<String>(
-              enabled: false,
-              child: Text(
-                text,
-                style: TextStyle(color: context.ink, fontSize: 13),
-              ),
-            ),
-          const PopupMenuDivider(),
-          const PopupMenuItem(
-            value: 'reconnect',
-            child: Text('Reconnect terminal'),
-          ),
-        ],
       ),
     ),
   );
