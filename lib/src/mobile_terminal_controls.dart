@@ -15,7 +15,9 @@ class MobileTerminalKeyBar extends StatelessWidget {
     required this.onKeyboard,
     required this.onPaste,
     required this.onKey,
+    this.statusMenu,
   });
+  final Widget? statusMenu;
   final bool enabled, control, arrows, keyboardVisible;
   final VoidCallback onControl, onArrows, onKeyboard, onPaste;
   final ValueChanged<String> onKey;
@@ -23,7 +25,7 @@ class MobileTerminalKeyBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) => ExcludeFocus(
     child: Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
       child: Material(
         color: context.panel,
         shape: StadiumBorder(side: BorderSide(color: context.border)),
@@ -66,9 +68,71 @@ class MobileTerminalKeyBar extends StatelessWidget {
                     : Icons.keyboard_outlined,
                 onPressed: enabled ? onKeyboard : null,
               ),
+              ?statusMenu,
             ],
           ),
         ),
+      ),
+    ),
+  );
+}
+
+/// Connection details occupy one button, leaving the terminal its full height.
+class MobileTerminalStatusMenu extends StatelessWidget {
+  const MobileTerminalStatusMenu({
+    super.key,
+    required this.summary,
+    required this.details,
+    required this.warning,
+    required this.onReconnect,
+  });
+  final String summary;
+  final List<String> details;
+  final bool warning;
+  final VoidCallback onReconnect;
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    label: summary,
+    liveRegion: warning,
+    child: SizedBox(
+      width: 44,
+      height: 44,
+      child: PopupMenuButton<String>(
+        tooltip: 'Terminal status & more',
+        requestFocus: false,
+        padding: EdgeInsets.zero,
+        icon: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Icon(Icons.more_horiz, color: context.ink),
+            Positioned(
+              right: -2,
+              top: -2,
+              child: Icon(
+                warning ? Icons.warning_amber_rounded : Icons.circle,
+                size: warning ? 12 : 7,
+                color: warning ? context.attention : const Color(0xff7ab894),
+              ),
+            ),
+          ],
+        ),
+        onSelected: (_) => onReconnect(),
+        itemBuilder: (_) => [
+          for (final text in {summary, ...details})
+            PopupMenuItem<String>(
+              enabled: false,
+              child: Text(
+                text,
+                style: TextStyle(color: context.ink, fontSize: 13),
+              ),
+            ),
+          const PopupMenuDivider(),
+          const PopupMenuItem(
+            value: 'reconnect',
+            child: Text('Reconnect terminal'),
+          ),
+        ],
       ),
     ),
   );
@@ -79,68 +143,149 @@ class MobileTerminalArrowPad extends StatelessWidget {
     super.key,
     required this.enabled,
     required this.onKey,
+    required this.onClose,
   });
   final bool enabled;
   final ValueChanged<String> onKey;
+  final VoidCallback onClose;
+
   @override
-  Widget build(BuildContext context) {
-    Widget button(String key, String label, IconData icon) => _KeyButton(
-      label,
-      icon: icon,
-      onPressed: enabled ? () => onKey(key) : null,
-    );
-    final left = button('left', 'Arrow left', Icons.chevron_left);
-    final right = button('right', 'Arrow right', Icons.chevron_right);
-    final up = button('up', 'Arrow up', Icons.keyboard_arrow_up);
-    final down = button('down', 'Arrow down', Icons.keyboard_arrow_down);
-    final enter = button('enter', 'Enter', Icons.keyboard_return);
-    final backspace = button(
-      'backspace',
-      'Backspace',
-      Icons.backspace_outlined,
-    );
-    return ExcludeFocus(
-      child: LayoutBuilder(
-        builder: (context, box) => Align(
+  Widget build(BuildContext context) => ExcludeFocus(
+    child: LayoutBuilder(
+      builder: (context, box) {
+        final compact = box.maxHeight < 216;
+        Widget button(
+          String key,
+          String label,
+          IconData icon, {
+          bool primary = true,
+        }) => _PadKey(
+          label: label,
+          icon: icon,
+          size: compact ? 44 : 52,
+          primary: primary,
+          onPressed: enabled ? () => onKey(key) : null,
+        );
+        final left = button('left', 'Arrow left', Icons.chevron_left);
+        final right = button('right', 'Arrow right', Icons.chevron_right);
+        final up = button('up', 'Arrow up', Icons.keyboard_arrow_up);
+        final down = button('down', 'Arrow down', Icons.keyboard_arrow_down);
+        final enter = button(
+          'enter',
+          'Enter',
+          Icons.keyboard_return,
+          primary: false,
+        );
+        final backspace = button(
+          'backspace',
+          'Backspace',
+          Icons.backspace_outlined,
+          primary: false,
+        );
+        Widget row(List<Widget> children) =>
+            Row(mainAxisSize: MainAxisSize.min, spacing: 6, children: children);
+        return Align(
           alignment: Alignment.bottomCenter,
           child: Padding(
-            padding: const EdgeInsets.all(8),
-            child: Material(
-              color: context.panel,
-              elevation: 8,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(18),
-                side: BorderSide(color: context.border),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(4),
-                child: box.maxHeight < 164
-                    ? Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [backspace, left, down, up, right, enter],
-                      )
-                    : Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              backspace,
-                              up,
-                              button(
-                                'ctrl+u',
-                                'Clear line (Ctrl+U)',
-                                Icons.clear_all,
-                              ),
-                            ],
+            padding: EdgeInsets.only(bottom: compact ? 4 : 10),
+            child: compact
+                ? row([backspace, left, down, up, right, enter])
+                : Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SizedBox(
+                        width: 52,
+                        height: 28,
+                        child: IconButton(
+                          tooltip: 'Hide arrow keys',
+                          padding: EdgeInsets.zero,
+                          onPressed: onClose,
+                          icon: Container(
+                            width: 34,
+                            height: 5,
+                            decoration: BoxDecoration(
+                              color: context.mutedInk,
+                              borderRadius: BorderRadius.circular(3),
+                            ),
                           ),
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [left, enter, right],
-                          ),
-                          down,
-                        ],
+                        ),
                       ),
+                      row([
+                        backspace,
+                        up,
+                        button(
+                          'ctrl+u',
+                          'Clear line (Ctrl+U)',
+                          Icons.clear_all,
+                          primary: false,
+                        ),
+                      ]),
+                      const SizedBox(height: 6),
+                      row([left, enter, right]),
+                      const SizedBox(height: 6),
+                      down,
+                    ],
+                  ),
+          ),
+        );
+      },
+    ),
+  );
+}
+
+class _PadKey extends StatelessWidget {
+  const _PadKey({
+    required this.label,
+    required this.icon,
+    required this.size,
+    required this.primary,
+    this.onPressed,
+  });
+  final String label;
+  final IconData icon;
+  final double size;
+  final bool primary;
+  final VoidCallback? onPressed;
+  @override
+  Widget build(BuildContext context) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final base = dark
+        ? (primary ? const Color(0xff3d4852) : const Color(0xff202b35))
+        : (primary ? const Color(0xffe0e7ee) : const Color(0xfff4f7fa));
+    return Tooltip(
+      message: label,
+      child: Semantics(
+        button: true,
+        label: label,
+        enabled: onPressed != null,
+        child: Container(
+          width: size,
+          height: size,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x38000000),
+                blurRadius: 10,
+                offset: Offset(0, 3),
+              ),
+            ],
+          ),
+          child: Material(
+            color: base,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+              side: BorderSide(
+                color: dark ? const Color(0xff53606b) : const Color(0xffc0ccd7),
+              ),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: onPressed,
+              child: Icon(
+                icon,
+                size: 24,
+                color: onPressed == null ? context.mutedInk : context.ink,
               ),
             ),
           ),

@@ -547,7 +547,14 @@ class _WorkspaceShellState extends State<_WorkspaceShell>
                                         mobileControls: !widget.desktop,
                                       ),
                               ),
-                              if (constraints.maxHeight >= 350)
+                              if (constraints.maxHeight >= 350 &&
+                                  (widget.desktop ||
+                                      app.selectedSession == null ||
+                                      app.terminals[app
+                                              .selectedSession!
+                                              .key
+                                              .id] ==
+                                          null))
                                 _ConnectionFooter(app: app),
                             ],
                           ),

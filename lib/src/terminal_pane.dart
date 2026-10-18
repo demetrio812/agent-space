@@ -145,6 +145,17 @@ class _TerminalPaneState extends State<TerminalPane> {
     final location = '$computer · $workspace';
     final entry = app.terminals[session.key.id];
     final state = app.sendStates[session.key.id];
+    final connectionReady =
+        app.connectionState == ConnectionState.live ||
+        app.connectionState == ConnectionState.demo;
+    final statusSummary =
+        state?.message ??
+        app.store.warning ??
+        (!connectionReady
+            ? app.connectionMessage
+            : entry?.state != TerminalState.live
+            ? entry?.message ?? 'Connecting terminal…'
+            : 'Connected');
     final rows = app.sessionsForFilter(app.layout.filter);
     if (!rows.any((s) => s.key == session.key)) rows.add(session);
     final terminal = entry?.screen.terminal;
@@ -485,6 +496,28 @@ class _TerminalPaneState extends State<TerminalPane> {
                           autofocus: true,
                           showMobileControls:
                               widget.mobileControls && !composerOpen,
+                          mobileStatus: MobileTerminalStatusMenu(
+                            summary: statusSummary,
+                            details: [
+                              app.connectionMessage,
+                              if (app.store.warning != null) app.store.warning!,
+                              entry!.message,
+                              if (!app.canSendTerminalInput(session.key.id))
+                                'Terminal input unavailable',
+                              '${entry.screen.columns} × ${entry.screen.rows}',
+                              '${app.terminals.values.where((t) => t.subscription != null).length}/16 live',
+                            ],
+                            warning:
+                                state?.message != null ||
+                                app.store.warning != null ||
+                                entry.state != TerminalState.live ||
+                                !connectionReady,
+                            onReconnect: () => unawaited(
+                              connectionReady
+                                  ? app.reconnectTerminal(session.key.id)
+                                  : app.reconnect(),
+                            ),
+                          ),
                           terminal: terminal,
                           controller: terminalController,
                           zoom: app.layout.zoom,
@@ -519,7 +552,10 @@ class _TerminalPaneState extends State<TerminalPane> {
                       ),
               ),
             ),
-            if (entry != null && (!short || state?.uncertain != true))
+            if ((!widget.mobileControls || composerOpen) &&
+                (!widget.mobileControls || state?.uncertain != true) &&
+                entry != null &&
+                (!short || state?.uncertain != true))
               Container(
                 height: 25,
                 color: const Color(0xff17232e),
@@ -538,7 +574,10 @@ class _TerminalPaneState extends State<TerminalPane> {
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(
-                        (state?.uncertain != true ? state?.message : null) ??
+                        (widget.mobileControls ? statusSummary : null) ??
+                            (state?.uncertain != true
+                                ? state?.message
+                                : null) ??
                             (entry.state == TerminalState.live &&
                                     app.canSendTerminalInput(session.key.id)
                                 ? 'Click terminal to type · arrows and control keys are supported'
@@ -741,6 +780,7 @@ class TerminalSurface extends StatefulWidget {
     this.preserveFocusWhilePaused = false,
     this.autofocus = false,
     this.showMobileControls = false,
+    this.mobileStatus,
   });
   final Terminal terminal;
   final TerminalController controller;
@@ -752,6 +792,7 @@ class TerminalSurface extends StatefulWidget {
   final bool forwardMouseClicks;
   final bool autofocus;
   final bool showMobileControls;
+  final Widget? mobileStatus;
   final void Function(TerminalInput)? sendInput;
   final VoidCallback? sendDraft;
   final bool preserveFocusWhilePaused;
@@ -1200,6 +1241,7 @@ class _TerminalSurfaceState extends State<TerminalSurface> {
             if (widget.showMobileControls && _arrowsOpen)
               Positioned.fill(
                 child: MobileTerminalArrowPad(
+                  onClose: () => setState(() => _arrowsOpen = false),
                   enabled: widget.sendInput != null,
                   onKey: _sendLogicalKey,
                 ),
@@ -1212,6 +1254,7 @@ class _TerminalSurfaceState extends State<TerminalSurface> {
           view: View.of(context),
           child: Builder(
             builder: (keyboardContext) => MobileTerminalKeyBar(
+              statusMenu: widget.mobileStatus,
               enabled: widget.sendInput != null,
               control: _controlPressed,
               arrows: _arrowsOpen,

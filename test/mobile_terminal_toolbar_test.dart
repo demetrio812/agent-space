@@ -12,6 +12,7 @@ import 'terminal_input_test.dart' show InputFixture, WidgetStore;
 
 void main() {
   for (final size in [
+    const Size(320, 740),
     const Size(390, 844),
     const Size(844, 390),
     const Size(1024, 768),
@@ -200,4 +201,64 @@ void main() {
     expect(find.byTooltip('Arrow keys'), findsNothing);
     await tester.pumpWidget(const SizedBox());
   });
+  testWidgets(
+    'mobile status is in overflow without rows and warnings remain accessible',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(390, 844));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final backend = InputFixture();
+      final app = AppController(
+        snapshot: AppSnapshot(),
+        store: WidgetStore(),
+        backendFactory: (_) => backend,
+      );
+      try {
+        await app.start(polling: false);
+        final id = backend.session.key.id;
+        app.select(id);
+        await tester.pumpWidget(AgentSpaceApp(controller: app, desktop: false));
+        await tester.pump(const Duration(milliseconds: 800));
+        expect(find.textContaining('Click terminal to type'), findsNothing);
+        expect(find.text('1/16 live'), findsNothing);
+        final before = tester.getSize(find.byType(TerminalView));
+        await tester.tap(find.byTooltip('Terminal status & more'));
+        await tester.pumpAndSettle();
+        expect(find.text('1/16 live'), findsOneWidget);
+        expect(find.text('100 × 26'), findsOneWidget);
+        expect(find.text('Reconnect terminal'), findsOneWidget);
+        await tester.tapAt(const Offset(2, 2));
+        await tester.pumpAndSettle();
+        expect(
+          tester
+              .widget<TerminalView>(find.byType(TerminalView))
+              .focusNode!
+              .hasFocus,
+          isTrue,
+        );
+        app.sendStates[id] = SendState()..message = 'Unsupported terminal key.';
+        app.setAppearance('dark');
+        await tester.pump();
+        expect(tester.getSize(find.byType(TerminalView)), before);
+        await tester.tap(find.byTooltip('Terminal status & more'));
+        await tester.pumpAndSettle();
+        expect(find.text('Unsupported terminal key.'), findsOneWidget);
+        await tester.tapAt(const Offset(2, 2));
+        await tester.pumpAndSettle();
+        app.sendStates[id] = SendState()
+          ..message = 'Terminal input delivery is uncertain.'
+          ..uncertain = true;
+        app.setAppearance('light');
+        await tester.pump();
+        expect(find.text('I’ve checked'), findsOneWidget);
+        expect(
+          find.text('Terminal input delivery is uncertain.'),
+          findsOneWidget,
+        );
+        expect(tester.takeException(), isNull);
+      } finally {
+        await tester.pumpWidget(const SizedBox());
+        await tester.runAsync(app.shutdown);
+      }
+    },
+  );
 }

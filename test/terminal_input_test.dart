@@ -380,9 +380,15 @@ void main() {
             await tester.sendKeyEvent(LogicalKeyboardKey.bracketLeft);
             await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
             await tester.pump();
-            expect(find.text('Unsupported terminal key.'), findsOneWidget);
             expect(tester.getRect(find.byType(TerminalView)), before);
             expect(focus.hasFocus, isTrue);
+            if (!composerOpen) {
+              // Mobile feedback is now in the status menu, without adding rows.
+              expect(find.text('Unsupported terminal key.'), findsNothing);
+              await tester.tap(find.byTooltip('Terminal status & more'));
+              await tester.pumpAndSettle();
+            }
+            expect(find.text('Unsupported terminal key.'), findsOneWidget);
             expect(backend.input, isEmpty);
             expect(tester.takeException(), isNull);
           } finally {
@@ -613,10 +619,7 @@ void main() {
         store: WidgetStore(),
         backendFactory: (_) => backend,
       );
-      final pasted = List.filled(
-        120,
-        '  first\tsecond café\n',
-      ).join();
+      final pasted = List.filled(120, '  first\tsecond café\n').join();
       tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
         SystemChannels.platform,
         (call) async =>
