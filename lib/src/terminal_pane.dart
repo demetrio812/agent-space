@@ -1278,7 +1278,8 @@ class _TerminalSurfaceState extends State<TerminalSurface> {
 
 const _terminalTheme = TerminalTheme(
   cursor: Color(0xffdce7ef),
-  selection: Color(0xff3c566f),
+  // xterm paints selection over the glyphs, so the highlight must be translucent.
+  selection: Color(0x4d8cbdf0),
   foreground: Color(0xffd0dce6),
   background: terminalBackground,
   black: Color(0xff101820),
