@@ -1,4 +1,5 @@
 """Herdr JSON API: one local socket per bounded correlated request."""
+from collections import Counter
 import hashlib
 import json
 import os
@@ -9,10 +10,10 @@ import threading
 import time
 
 try:
-    from .protocol import BridgeRejected, DeliveryUncertain, read_record, validate_route
+    from .protocol import BridgeRejected, DeliveryUncertain, read_record, validate_route, IDENTITY
     from .gate_rules import validate_input, validate_send
 except ImportError:
-    from protocol import BridgeRejected, DeliveryUncertain, read_record, validate_route
+    from protocol import BridgeRejected, DeliveryUncertain, read_record, validate_route, IDENTITY
     from gate_rules import validate_input, validate_send
 
 
@@ -76,53 +77,69 @@ class LocalApi:
             if sent and method.startswith('pane.send'): raise DeliveryUncertain()
             raise BridgeRejected('offline')
 
+    def listing(self, method, field, deadline):
+        response = self.call(method, {}, deadline)
+        result = response.get('result')
+        rows = result.get(field) if isinstance(result, dict) else None
+        if not isinstance(rows, list) or len(rows) > 4096:
+            raise BridgeRejected('invalid_request')
+        return rows
+
+    def panes(self, deadline):
+        try:
+            return self.listing('pane.list', 'panes', deadline)
+        except BridgeRejected as error:
+            # Older Herdr versions may not implement pane.list. Malformed
+            # successful responses must not fall back to stale agent rows.
+            if error.code != 'offline': raise
+            return None
+
+    @staticmethod
+    def identity(row):
+        if not isinstance(row, dict): return None
+        key = tuple(row.get(field) for field in ('terminal_id', 'pane_id', 'workspace_id', 'tab_id'))
+        return key if all(isinstance(value, str) and IDENTITY.fullmatch(value) for value in key) else None
+
     def catalog(self):
         generation = self.generation(); deadline = time.monotonic()+4
-        response = self.call('agent.list', {}, deadline)
-        agents = response.get('result', {}).get('agents')
-        if not isinstance(agents, list) or len(agents) > 4096: raise BridgeRejected('invalid_request')
+        panes = self.panes(deadline)
+        try:
+            agents = self.listing('agent.list', 'agents', deadline)
+        except BridgeRejected:
+            if panes is None: raise
+            agents = []
+        if panes is not None:
+            # A shell survives its agent process. pane.list is authoritative;
+            # agent.list only contributes metadata for the exact same terminal.
+            identities = Counter(self.identity(row) for row in agents)
+            metadata = {self.identity(row): row for row in agents
+                        if self.identity(row) and identities[self.identity(row)] == 1}
+            terminals = Counter(row.get('terminal_id') for row in panes
+                                if isinstance(row, dict) and isinstance(row.get('terminal_id'), str))
+            agents = []
+            for pane in panes:
+                key = self.identity(pane)
+                if key is None or terminals[key[0]] != 1: continue
+                row = {**metadata.get(key, {}), **pane}
+                label = pane.get('label')
+                if isinstance(label, str) and label.strip(): row['title'] = label
+                agents.append(row)
         extras = {}
         for method, field in [('workspace.list','workspaces'),('tab.list','tabs')]:
-            try:
-                result = self.call(method, {}, deadline).get('result', {}).get(field, [])
-                extras[field] = result if isinstance(result, list) and len(result) <= 4096 else []
+            try: extras[field] = self.listing(method, field, deadline)
             except BridgeRejected: extras[field] = []
-        # pane.rename changes the manual label, which agent.list omits on
-        # supported Herdr versions. Join by the full local identity; never
-        # treat a pane number alone as proof that it is the same terminal.
-        try:
-            panes = self.call('pane.list', {}, deadline).get('result', {}).get('panes', [])
-            if isinstance(panes, list) and len(panes) <= 4096:
-                fields = ('terminal_id', 'pane_id', 'workspace_id', 'tab_id')
-                labels = {}; seen = set()
-                for pane in panes:
-                    if not isinstance(pane, dict): continue
-                    key = tuple(pane.get(field) for field in fields)
-                    if not all(isinstance(value, str) and value for value in key): continue
-                    if key in seen:
-                        labels.pop(key, None)
-                        continue
-                    seen.add(key)
-                    label = pane.get('label')
-                    if isinstance(label, str) and label.strip(): labels[key] = label
-                for agent in agents:
-                    if not isinstance(agent, dict): continue
-                    key = tuple(agent.get(field) for field in fields)
-                    if all(isinstance(value, str) for value in key) and key in labels:
-                        agent['title'] = labels[key]
-        except BridgeRejected:
-            pass  # Older servers can still provide their automatic titles.
         if generation != self.generation(): raise BridgeRejected('generation_changed')
-        return {'serverIdentity':generation,'catalog':response,**extras}
+        return {'serverIdentity':generation,'catalog':{'result':{'agents':agents}},**extras}
 
     def member(self, route):
         validate_route(route)
         if self.generation() != route['generation']: raise BridgeRejected('generation_changed')
-        listing = self.call('agent.list', {}, time.monotonic()+4)
-        agents = listing.get('result', {}).get('agents')
-        if not isinstance(agents, list) or len(agents) > 4096: raise BridgeRejected('invalid_request')
-        matches = [a for a in agents if isinstance(a, dict) and a.get('terminal_id') == route['terminal']]
-        if len(matches) != 1 or matches[0].get('pane_id') != route['pane']:
+        deadline = time.monotonic()+4
+        rows = self.panes(deadline)
+        if rows is None: rows = self.listing('agent.list', 'agents', deadline)
+        matches = [row for row in rows if isinstance(row, dict) and row.get('terminal_id') == route['terminal']]
+        if (len(matches) != 1 or matches[0].get('pane_id') != route['pane']
+                or self.identity(matches[0]) is None):
             raise BridgeRejected('terminal_missing')
         if self.generation() != route['generation']: raise BridgeRejected('generation_changed')
         return matches[0]

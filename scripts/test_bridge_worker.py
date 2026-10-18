@@ -18,6 +18,57 @@ class WorkerTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
 
+    def test_shell_remains_discoverable_and_writable_after_agent_exits(self):
+        with FakeHerdr(self.root) as h:
+            api=LocalApi(h.socket_path,'peer')
+            h.agents[0].update(agent='claude', agent_status='working')
+            before=api.catalog(); generation=before['serverIdentity']
+            pane={**h.agents[0], 'agent':None, 'agent_status':None, 'label':'My shell'}
+            h.extra_panes=[pane]; h.agents=[]
+            after=api.catalog()['catalog']['result']['agents']
+            self.assertEqual([a['terminal_id'] for a in after], ['t1'])
+            self.assertEqual(after[0]['title'], 'My shell')
+            self.assertIsNone(after[0]['agent'])
+            self.assertEqual(after[0]['terminal_id'], before['catalog']['result']['agents'][0]['terminal_id'])
+            route={'generation':generation,'terminal':'t1','pane':'p1'}
+            api.dispatch(route,{'text':'claude'})
+            self.assertEqual(len([r for r in h.calls if r['method']=='pane.send_text']),1)
+            h.extra_panes=[]
+            self.assertEqual(api.catalog()['catalog']['result']['agents'], [])
+            with self.assertRaises(BridgeRejected): api.dispatch(route,{'text':'closed'})
+
+    def test_ambiguous_shell_identity_never_receives_input(self):
+        with FakeHerdr(self.root) as h:
+            api=LocalApi(h.socket_path,'peer'); generation=api.generation()
+            h.extra_panes=[dict(h.agents[0]), {**h.agents[0], 'pane_id':'other'}]
+            with self.assertRaises(BridgeRejected):
+                api.dispatch({'generation':generation,'terminal':'t1','pane':'p1'}, {'text':'ambiguous'})
+            self.assertFalse(any(r['method'].startswith('pane.send') for r in h.calls))
+
+    def test_empty_panes_do_not_resurrect_stale_agents(self):
+        with FakeHerdr(self.root) as h:
+            api=LocalApi(h.socket_path,'peer'); original=api.call
+            def call(method,params,deadline,before_send=None):
+                if method=='pane.list': return {'result':{'panes':[]}}
+                return original(method,params,deadline,before_send)
+            api.call=call
+            self.assertEqual(api.catalog()['catalog']['result']['agents'], [])
+            with self.assertRaises(BridgeRejected):
+                api.dispatch({'generation':api.generation(),'terminal':'t1','pane':'p1'}, {'text':'closed'})
+            self.assertFalse(any(r['method'].startswith('pane.send') for r in h.calls))
+
+    def test_malformed_pane_list_rejects_input(self):
+        with FakeHerdr(self.root) as h:
+            api=LocalApi(h.socket_path,'peer'); original=api.call
+            for panes in [None, {}, [{}]*4097]:
+                def call(method,params,deadline,before_send=None):
+                    if method=='pane.list': return {'result':{'panes':panes}}
+                    return original(method,params,deadline,before_send)
+                api.call=call
+                with self.subTest(panes=type(panes).__name__), self.assertRaises(BridgeRejected):
+                    api.dispatch({'generation':api.generation(),'terminal':'t1','pane':'p1'}, {'text':'invalid'})
+            self.assertFalse(any(r['method'].startswith('pane.send') for r in h.calls))
+
     def test_fragmented_unicode_and_embedded_newline_are_literal(self):
         row={'text':'café\n世界'}
         raw=(json.dumps(row,ensure_ascii=False)+'\n').encode()

@@ -41,18 +41,21 @@ class ActionsTests(unittest.TestCase):
         self.actions.mutate('rename',self.route,{'title':''})
         self.assertEqual(fresh.catalog()['catalog']['result']['agents'][0]['title'],'Agent-generated title')
 
-    def test_pane_labels_require_unique_exact_session_identity(self):
+    def test_agent_metadata_requires_unique_exact_pane_identity(self):
         original=self.api.call
-        agent=self.herdr.agents[0]
-        for panes in [[{**agent,'terminal_id':'other','label':'Wrong'}],
-                      [{**agent,'workspace_id':'other','label':'Wrong'}],
-                      [{**agent,'label':'First'},{**agent,'label':'Duplicate'}]]:
+        agent=dict(self.herdr.agents[0])
+        self.herdr.agents[0]['agent_session']='old-agent-session'
+        for field in ('terminal_id','pane_id','workspace_id','tab_id'):
+            pane={**agent,field:'other','label':'Current shell'}
             def call(method,params,deadline,before_send=None):
-                if method=='pane.list': return {'result':{'panes':panes}}
+                if method=='pane.list': return {'result':{'panes':[pane]}}
                 return original(method,params,deadline,before_send)
             self.api.call=call
-            with self.subTest(panes=panes):
-                self.assertNotIn('title',self.api.catalog()['catalog']['result']['agents'][0])
+            with self.subTest(field=field):
+                current=self.api.catalog()['catalog']['result']['agents'][0]
+                self.assertNotIn('agent_session',current)
+                self.assertEqual(current[field],'other')
+                self.assertEqual(current['title'],'Current shell')
 
     def test_older_server_without_pane_list_keeps_catalog(self):
         original=self.api.call

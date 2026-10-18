@@ -22,6 +22,7 @@ class FakeHerdr:
         self.management_result = None
         self.mutation_calls = []
         self.pane_labels = {}
+        self.extra_panes = []
         self.workspaces = [{"workspace_id":"w1","label":"Workbench"}]
         self.agents = [{'terminal_id': 't1', 'pane_id': 'p1', 'workspace_id': 'w1',
                         'tab_id': 'tab1', 'terminal_title': 'Disposable'}]
@@ -87,7 +88,7 @@ else:
             result = {'agent.list': {'agents': self.agents},
                       'workspace.list': {'workspaces': self.workspaces},
                       'tab.list': {'tabs': []},
-                      'pane.list': {'panes': [{**a, 'label': self.pane_labels.get(a['pane_id'])} for a in self.agents]},
+                      'pane.list': {'panes': [{**a, 'label': self.pane_labels.get(a['pane_id'])} for a in self.agents] + self.extra_panes},
                       'pane.layout': {'layout': {'panes':[{'pane_id':'p1','rect':{'width':90,'height':30}}]}}}.get(method, {'type':'ok'})
             if method in ('pane.rename','pane.close','tab.create'):
                 self.mutation_calls.append(row)
