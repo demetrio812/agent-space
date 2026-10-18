@@ -7,6 +7,7 @@ import 'package:flutter/gestures.dart';
 import 'package:xterm/xterm.dart' hide TerminalState;
 
 import 'controller.dart';
+import 'mobile_terminal_controls.dart';
 import 'terminal_drop_target.dart';
 import 'models.dart';
 import 'ui_common.dart';
@@ -20,11 +21,13 @@ class TerminalPane extends StatefulWidget {
     required this.session,
     this.openWindow,
     required this.compact,
+    this.mobileControls = false,
   });
   final AppController app;
   final SessionInfo session;
   final OpenDesktopWindow? openWindow;
   final bool compact;
+  final bool mobileControls;
   @override
   State<TerminalPane> createState() => _TerminalPaneState();
 }
@@ -480,6 +483,8 @@ class _TerminalPaneState extends State<TerminalPane> {
                         sessionId: session.key.id,
                         child: TerminalSurface(
                           autofocus: true,
+                          showMobileControls:
+                              widget.mobileControls && !composerOpen,
                           terminal: terminal,
                           controller: terminalController,
                           zoom: app.layout.zoom,
@@ -735,6 +740,7 @@ class TerminalSurface extends StatefulWidget {
     this.sendDraft,
     this.preserveFocusWhilePaused = false,
     this.autofocus = false,
+    this.showMobileControls = false,
   });
   final Terminal terminal;
   final TerminalController controller;
@@ -745,6 +751,7 @@ class TerminalSurface extends StatefulWidget {
   final Future<void> Function(int)? onScroll;
   final bool forwardMouseClicks;
   final bool autofocus;
+  final bool showMobileControls;
   final void Function(TerminalInput)? sendInput;
   final VoidCallback? sendDraft;
   final bool preserveFocusWhilePaused;
@@ -755,6 +762,7 @@ class TerminalSurface extends StatefulWidget {
 class _TerminalSurfaceState extends State<TerminalSurface> {
   (int, int)? reportedViewport;
   final _terminalViewKey = GlobalKey<TerminalViewState>();
+  bool _controlPressed = false, _arrowsOpen = false;
   int? _tapPointer;
   Offset? _tapStart;
   Duration? _tapTime;
@@ -927,7 +935,11 @@ class _TerminalSurfaceState extends State<TerminalSurface> {
   }
 
   void _focusChanged() {
-    if (mounted) setState(() {});
+    if (mounted) {
+      setState(() {
+        if (!focus.hasFocus) _controlPressed = false;
+      });
+    }
   }
 
   void _attach() {
@@ -944,6 +956,12 @@ class _TerminalSurfaceState extends State<TerminalSurface> {
   @override
   void didUpdateWidget(covariant TerminalSurface oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.inputId != widget.inputId ||
+        widget.sendInput == null ||
+        !widget.showMobileControls) {
+      _controlPressed = false;
+      _arrowsOpen = false;
+    }
     if (oldWidget.inputId != widget.inputId || widget.onScroll == null) {
       _tapPointer = null;
       _resetScroll();
@@ -994,7 +1012,7 @@ class _TerminalSurfaceState extends State<TerminalSurface> {
       _ => null,
     };
     if (key != null) {
-      widget.sendInput?.call(TerminalInput.keys([key]));
+      _sendLogicalKey(key);
     } else {
       final text = data.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
       if (!RegExp(r'[\x00-\x08\x0b-\x1f\x7f-\x9f]').hasMatch(text)) {
@@ -1005,6 +1023,11 @@ class _TerminalSurfaceState extends State<TerminalSurface> {
 
   void _literal(String text, {bool paste = false}) {
     if (text.isEmpty) return;
+    if (_controlPressed && !paste && RegExp(r'^[a-zA-Z0-9 ]$').hasMatch(text)) {
+      _sendLogicalKey(text == ' ' ? 'space' : text.toLowerCase());
+      return;
+    }
+    if (_controlPressed) setState(() => _controlPressed = false);
     final normalized = text.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
     widget.sendInput?.call(
       paste || normalized.contains('\n') || normalized.contains('\t')
@@ -1013,11 +1036,20 @@ class _TerminalSurfaceState extends State<TerminalSurface> {
     );
   }
 
-  Future<void> _paste() async {
+  void _sendLogicalKey(String key) {
+    if (widget.sendInput == null) return;
+    final modified = _controlPressed && !key.split('+').contains('ctrl')
+        ? 'ctrl+$key'
+        : key;
+    if (_controlPressed) setState(() => _controlPressed = false);
+    widget.sendInput!(TerminalInput.keys([modified]));
+  }
+
+  Future<void> _paste({bool requireFocus = true}) async {
     final inputId = widget.inputId;
     final data = await Clipboard.getData(Clipboard.kTextPlain);
     if (!mounted ||
-        !focus.hasFocus ||
+        (requireFocus && !focus.hasFocus) ||
         widget.sendInput == null ||
         inputId != widget.inputId) {
       return;
@@ -1135,7 +1167,10 @@ class _TerminalSurfaceState extends State<TerminalSurface> {
         character == null) {
       return KeyEventResult.skipRemainingHandlers;
     }
-    if (base == null && (keyboard.isControlPressed || keyboard.isAltPressed)) {
+    if (base == null &&
+        (_controlPressed ||
+            keyboard.isControlPressed ||
+            keyboard.isAltPressed)) {
       base = logical == LogicalKeyboardKey.space
           ? 'space'
           : logical.keyLabel.toLowerCase();
@@ -1149,14 +1184,67 @@ class _TerminalSurfaceState extends State<TerminalSurface> {
         base,
       ].join('+');
       // The controller reports unsupported chords instead of silently dropping them.
-      widget.sendInput?.call(TerminalInput.keys([key]));
+      _sendLogicalKey(key);
       return KeyEventResult.handled;
     }
     return KeyEventResult.ignored;
   }
 
   @override
-  Widget build(BuildContext context) => LayoutBuilder(
+  Widget build(BuildContext context) => Column(
+    children: [
+      Expanded(
+        child: Stack(
+          children: [
+            Positioned.fill(child: _buildTerminal(context)),
+            if (widget.showMobileControls && _arrowsOpen)
+              Positioned.fill(
+                child: MobileTerminalArrowPad(
+                  enabled: widget.sendInput != null,
+                  onKey: _sendLogicalKey,
+                ),
+              ),
+          ],
+        ),
+      ),
+      if (widget.showMobileControls)
+        MediaQuery.fromView(
+          view: View.of(context),
+          child: Builder(
+            builder: (keyboardContext) => MobileTerminalKeyBar(
+              enabled: widget.sendInput != null,
+              control: _controlPressed,
+              arrows: _arrowsOpen,
+              keyboardVisible:
+                  MediaQuery.viewInsetsOf(keyboardContext).bottom > 0,
+              onControl: () {
+                setState(() => _controlPressed = !_controlPressed);
+                if (_controlPressed) {
+                  _terminalViewKey.currentState?.requestKeyboard();
+                }
+              },
+              onArrows: () => setState(() => _arrowsOpen = !_arrowsOpen),
+              onKeyboard: () {
+                if (MediaQuery.viewInsetsOf(keyboardContext).bottom > 0) {
+                  _terminalViewKey.currentState?.closeKeyboard();
+                  unawaited(
+                    SystemChannels.textInput.invokeMethod<void>(
+                      'TextInput.hide',
+                    ),
+                  );
+                } else {
+                  _terminalViewKey.currentState?.requestKeyboard();
+                }
+              },
+              onPaste: () => unawaited(_paste(requireFocus: false)),
+              onKey: _sendLogicalKey,
+            ),
+          ),
+        ),
+    ],
+  );
+
+  Widget _buildTerminal(BuildContext context) => LayoutBuilder(
     builder: (context, box) {
       final terminal = widget.terminal,
           controller = widget.controller,

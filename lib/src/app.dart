@@ -544,6 +544,7 @@ class _WorkspaceShellState extends State<_WorkspaceShell>
                                         session: app.selectedSession!,
                                         openWindow: widget.openWindow,
                                         compact: narrow,
+                                        mobileControls: !widget.desktop,
                                       ),
                               ),
                               if (constraints.maxHeight >= 350)
