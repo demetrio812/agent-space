@@ -237,6 +237,39 @@ void main() {
       expect(app.visibleSessions.single.key.id, first);
     },
   );
+  test(
+    'group rename and deletion persist without touching session state',
+    () async {
+      final session = backend.sessions.first;
+      app.toggleFavourite(session);
+      app.updateDraft(session.key.id, 'keep this draft');
+      final group = app.createGroup('Review', [session.key.id]);
+      app.setFilter('group:${group.id}');
+      app.renameGroup(group.id, '  Focus  ');
+      app.renameGroup(group.id, ' \n ');
+      expect(group.name, 'Focus');
+      expect(app.filterLabel, 'Focus');
+      await app.shutdown();
+      final stored = await LayoutStore(dir.path).load();
+      final saved = stored.layoutFor('demo');
+      expect(saved.groups.single.name, 'Focus');
+      expect(saved.groups.single.sessions, [session.key.id]);
+      final reopened = AppController(
+        snapshot: stored,
+        store: LayoutStore(dir.path),
+        backendFactory: (_) => FakeBackend('demo', backend.sessions),
+      );
+      await reopened.start(polling: false);
+      reopened.deleteGroup(group.id);
+      expect(reopened.layout.filter, 'all');
+      expect(reopened.sessions.map((s) => s.key.id), contains(session.key.id));
+      await reopened.shutdown();
+      final deleted = (await LayoutStore(dir.path).load()).layoutFor('demo');
+      expect(deleted.groups, isEmpty);
+      expect(deleted.favourites, contains(session.key.id));
+      expect(deleted.drafts[session.key.id], 'keep this draft');
+    },
+  );
   test('tab reorder uses the destination index after removal', () {
     final first = backend.sessions.first.key.id,
         second = backend.sessions.last.key.id;

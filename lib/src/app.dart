@@ -6,6 +6,8 @@ import 'package:flutter/services.dart';
 
 import 'backend.dart';
 import 'controller.dart';
+import 'group_actions_ui.dart';
+import 'storage.dart' show TabGroup;
 import 'models.dart';
 import 'settings_sheet.dart';
 import 'terminal_pane.dart';
@@ -724,6 +726,7 @@ class _Sidebar extends StatelessWidget {
                     Icons.tab_outlined,
                     g.sessions.length,
                     dropping: candidates.isNotEmpty,
+                    group: g,
                   ),
                 ),
               ),
@@ -782,9 +785,10 @@ class _Sidebar extends StatelessWidget {
     int count, {
     Key? key,
     bool dropping = false,
+    TabGroup? group,
   }) {
     final selected = app.layout.filter == id;
-    return Container(
+    final row = Container(
       margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
       decoration: BoxDecoration(
         color: dropping
@@ -845,6 +849,7 @@ class _Sidebar extends StatelessWidget {
               ),
             ),
           ),
+          if (group != null) GroupActionsButton(app: app, group: group),
           if (openWindow != null)
             CompactIcon(
               Icons.open_in_new,
@@ -855,6 +860,15 @@ class _Sidebar extends StatelessWidget {
             ),
         ],
       ),
+    );
+    if (group == null) return row;
+    return GestureDetector(
+      key: ValueKey('group-row-${group.id}'),
+      behavior: HitTestBehavior.opaque,
+      onSecondaryTapDown: (details) => unawaited(
+        showGroupContextMenu(context, app, group, details.globalPosition),
+      ),
+      child: row,
     );
   }
 }

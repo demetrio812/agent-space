@@ -1776,6 +1776,15 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
+  void renameGroup(String groupId, String name) {
+    final clean = displayText(name).trim();
+    final group = layout.groups.where((g) => g.id == groupId).firstOrNull;
+    if (group == null || clean.isEmpty || clean == group.name) return;
+    group.name = clean;
+    _scheduleSave();
+    notifyListeners();
+  }
+
   void deleteGroup(String groupId) {
     layout.groups.removeWhere((g) => g.id == groupId);
     if (layout.filter == 'group:$groupId') setFilter('all');
