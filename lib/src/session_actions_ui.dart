@@ -245,13 +245,40 @@ class _SessionActionDialogState extends State<_SessionActionDialog> {
   @override
   void initState() {
     super.initState();
-    origin =
-        widget.session?.origin ??
-        widget.app.manageableComputers.firstOrNull?.origin;
-    final computer = widget.app.manageableComputers
-        .where((c) => c.origin.computerId == origin?.computerId)
+    final app = widget.app;
+    if (!creating) {
+      origin = widget.session!.origin;
+      return;
+    }
+    final session = app.selectedSession;
+    final workspaceComputer = app.computers
+        .where(
+          (c) => c.workspaces.any(
+            (w) => scopedWorkspaceId(c.origin, w.id) == app.layout.filter,
+          ),
+        )
         .firstOrNull;
-    workspaceId = computer?.workspaces.firstOrNull?.id;
+    final computerId =
+        session?.computerId ??
+        app.selectedComputerId ??
+        workspaceComputer?.origin.computerId;
+    // An unavailable selection must never silently target another computer.
+    final computer = computerId == null
+        ? app.manageableComputers.firstOrNull
+        : app.manageableComputers
+              .where((c) => c.origin.computerId == computerId)
+              .firstOrNull;
+    origin = computer?.origin;
+    final preferredWorkspace =
+        session?.workspaceId ??
+        computer?.workspaces
+            .where(
+              (w) =>
+                  scopedWorkspaceId(computer.origin, w.id) == app.layout.filter,
+            )
+            .firstOrNull
+            ?.id;
+    workspaceId = preferredWorkspace ?? computer?.workspaces.firstOrNull?.id;
   }
 
   @override

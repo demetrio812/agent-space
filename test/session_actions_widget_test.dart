@@ -11,6 +11,84 @@ import 'package:agentspace/src/session_actions_ui.dart';
 import 'app_widget_test.dart' show createApp, closeApp;
 
 void main() {
+  for (final contextKind in [
+    'computer',
+    'workspace',
+    'session',
+    'unavailable',
+  ]) {
+    testWidgets('new session inherits $contextKind context', (tester) async {
+      final app = await createApp();
+      try {
+        final base = app.computers.first;
+        final peer = SessionOrigin(
+          profile: app.source,
+          machineId: 'a' * 32,
+          machineLabel: 'Other computer',
+          herdrSession: 'default',
+          targetHash: base.origin.targetHash,
+          generation: base.origin.generation,
+        );
+        app.computers = [
+          ...app.computers,
+          ComputerInfo(
+            origin: peer,
+            state: contextKind == 'unavailable'
+                ? ComputerState.offline
+                : ComputerState.live,
+            managementEnabled: true,
+            workspaces: const [
+              SessionWorkspace('first', 'First'),
+              SessionWorkspace('second', 'Second'),
+            ],
+          ),
+        ];
+        if (contextKind == 'session') {
+          app.setFilter('favourites');
+          app.select(app.sessions.last.key.id);
+        } else {
+          app.setFilter(
+            contextKind == 'workspace'
+                ? scopedWorkspaceId(peer, 'second')
+                : 'computer:${peer.computerId}',
+          );
+        }
+        await tester.pumpWidget(AgentSpaceApp(controller: app));
+        await tester.pumpAndSettle();
+        unawaited(
+          showCreateSession(tester.element(find.byType(Scaffold).first), app),
+        );
+        await tester.pumpAndSettle();
+        final computer = tester.widget<DropdownButton<String>>(
+          find.byKey(const ValueKey('new-session-computer')),
+        );
+        final workspace = tester.widget<DropdownButton<String>>(
+          find.byKey(const ValueKey('new-session-workspace')),
+        );
+        expect(
+          computer.value,
+          contextKind == 'session'
+              ? app.selectedSession!.computerId
+              : contextKind == 'unavailable'
+              ? null
+              : peer.computerId,
+        );
+        expect(
+          workspace.value,
+          contextKind == 'session'
+              ? app.selectedSession!.workspaceId
+              : contextKind == 'workspace'
+              ? 'second'
+              : contextKind == 'unavailable'
+              ? null
+              : 'first',
+        );
+        await tester.tap(find.text('Cancel'));
+      } finally {
+        await closeApp(tester, app);
+      }
+    });
+  }
   testWidgets(
     'right click and three dot menu share rename and close; cancelling preserves terminal',
     (tester) async {
