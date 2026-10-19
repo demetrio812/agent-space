@@ -37,7 +37,7 @@ Map<String, dynamic> wireCatalog(String title) => {
       ],
     },
   },
-  'workspaces': [
+  'workspaces': <Map<String, dynamic>>[
     {'workspace_id': 'w1', 'label': 'Workbench'},
   ],
   'tabs': [],

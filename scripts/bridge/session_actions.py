@@ -1,4 +1,4 @@
-"""Three fixed Herdr mutations, validated before a single submission."""
+"""Fixed Herdr mutations, validated before a single submission."""
 import hashlib
 import os
 from pathlib import Path
@@ -11,7 +11,7 @@ except ImportError:
     from protocol import BridgeRejected, DeliveryUncertain, IDENTITY, GENERATION, validate_route
     from local_api import failed
 
-MANAGEMENT = frozenset(('rename','close','create'))
+MANAGEMENT = frozenset(('rename','close','create','workspace.create'))
 COMPUTER_FIELDS = {'machine','session','targetHash','generation'}
 
 def validate_computer_route(route):
@@ -26,7 +26,7 @@ def validate_computer_route(route):
 
 
 def validate_management_route(op,route):
-    if op=='create': return validate_computer_route(route)
+    if op in ('create','workspace.create'): return validate_computer_route(route)
     if not isinstance(route,dict) or set(route)!=COMPUTER_FIELDS|{'terminal','pane'}:
         raise BridgeRejected('invalid_request')
     validate_computer_route({k:route[k] for k in COMPUTER_FIELDS})
@@ -42,11 +42,13 @@ def text(value,limit):
 
 def validate_action(op,payload):
     if not isinstance(payload,dict): raise BridgeRejected('invalid_request')
-    fields={'rename':{'title'},'close':set(),'create':{'workspace','title','cwd'}}
+    fields={'rename':{'title'},'close':set(),'create':{'workspace','title','cwd'},'workspace.create':{'title','cwd'}}
     if op not in fields or set(payload)!=fields[op]: raise BridgeRejected('invalid_request')
     if op!='close': text(payload['title'],128)
     if op=='create':
         if not isinstance(payload['workspace'],str) or not IDENTITY.fullmatch(payload['workspace']): raise BridgeRejected('invalid_request')
+    if op=='workspace.create' and not payload['title'].strip(): raise BridgeRejected('invalid_request')
+    if op in ('create','workspace.create'):
         cwd=text(payload['cwd'],4096)
         if cwd and not (cwd.startswith('/') or cwd.startswith('~/')): raise BridgeRejected('invalid_request')
     return payload
@@ -71,20 +73,21 @@ class SessionActions:
             check(); submitted=True
         with self.api._dispatch_lock:
             check()
-            if op=='create':
+            if op in ('create','workspace.create'):
                 workspaces=self.api.call('workspace.list',{},time.monotonic()+4).get('result',{}).get('workspaces')
                 if not isinstance(workspaces,list) or len(workspaces)>4096: raise BridgeRejected('invalid_request')
-                if sum(isinstance(w,dict) and w.get('workspace_id')==payload['workspace'] for w in workspaces)!=1:
+                if op=='create' and sum(isinstance(w,dict) and w.get('workspace_id')==payload['workspace'] for w in workspaces)!=1:
                     raise BridgeRejected('workspace_missing')
                 cwd=payload['cwd']
                 if cwd.startswith('~/'): cwd=str(Path.home()/cwd[2:])
-                params={'workspace_id':payload['workspace'],'label':payload['title'] or None,'cwd':cwd or None,'focus':False,'env':{}}
+                params={'label':payload['title'] or None,'cwd':cwd or None,'focus':False,'env':{}}
+                if op=='create': params['workspace_id']=payload['workspace']
             else:
                 self.api.member(route)
                 params={'pane_id':route['pane']}
                 if op=='rename': params['label']=payload['title'] or None
             try:
-                response=self.api.call({'rename':'pane.rename','close':'pane.close','create':'tab.create'}[op],
+                response=self.api.call({'rename':'pane.rename','close':'pane.close','create':'tab.create','workspace.create':'workspace.create'}[op],
                                        params,time.monotonic()+4,before_send).get('result')
                 if failed(response): raise ValueError('Missing action acknowledgement')
                 if op=='close':
@@ -95,12 +98,18 @@ class SessionActions:
                             or pane.get('terminal_id')!=route['terminal']): raise ValueError('Invalid rename acknowledgement')
                 else:
                     pane=response.get('root_pane',{}); tab=response.get('tab',{})
-                    if response.get('type')!='tab_created' or not isinstance(pane,dict) or not isinstance(tab,dict): raise ValueError('Invalid create acknowledgement')
+                    if response.get('type')!=('workspace_created' if op=='workspace.create' else 'tab_created') or not isinstance(pane,dict) or not isinstance(tab,dict): raise ValueError('Invalid create acknowledgement')
                     ids={'terminal':pane.get('terminal_id'),'pane':pane.get('pane_id'),
                          'workspace':pane.get('workspace_id'),'tab':tab.get('tab_id')}
                     if any(not isinstance(v,str) or not IDENTITY.fullmatch(v) for v in ids.values()): raise ValueError('Missing created identity')
-                    if ids['workspace']!=payload['workspace'] or tab.get('workspace_id')!=ids['workspace'] or pane.get('tab_id')!=ids['tab']:
+                    if (op=='create' and ids['workspace']!=payload['workspace']) or tab.get('workspace_id')!=ids['workspace'] or pane.get('tab_id')!=ids['tab']:
                         raise ValueError('Different created destination')
+                    if op=='workspace.create':
+                        workspace=response.get('workspace')
+                        if not isinstance(workspace,dict) or workspace.get('workspace_id')!=ids['workspace']:
+                            raise ValueError('Different created workspace')
+                        if any(w.get('workspace_id')==ids['workspace'] for w in workspaces if isinstance(w,dict)):
+                            raise ValueError('Workspace was not new')
                     member=self.api.member({**route,'terminal':ids['terminal'],'pane':ids['pane']})
                     if member.get('workspace_id')!=ids['workspace'] or member.get('tab_id')!=ids['tab']:
                         raise ValueError('Created terminal unavailable')

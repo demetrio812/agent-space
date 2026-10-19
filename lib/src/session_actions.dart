@@ -3,9 +3,19 @@ import 'dart:convert';
 import 'models.dart';
 import 'network_models.dart';
 
-const sessionManagementOperations = {'rename', 'close', 'create'};
+const sessionManagementOperations = {
+  'rename',
+  'close',
+  'create',
+  'workspace.create',
+};
 
 abstract interface class SessionManagementBackend {
+  Future<SessionInfo> createWorkspace(
+    SessionOrigin origin, {
+    required String title,
+    String cwd = '',
+  });
   void cancelPendingSessionActions();
   List<ComputerInfo> get sessionComputers;
   Future<void> renameSession(SessionInfo session, String title);
@@ -48,6 +58,7 @@ void validateSessionAction(String op, Map<String, dynamic> payload) {
     'rename' => {'title'},
     'close' => <String>{},
     'create' => {'workspace', 'title', 'cwd'},
+    'workspace.create' => {'title', 'cwd'},
     _ => throw ArgumentError('Unsupported session action.'),
   };
   if (payload.length != fields.length || !fields.containsAll(payload.keys)) {
@@ -69,6 +80,11 @@ void validateSessionAction(String op, Map<String, dynamic> payload) {
         !terminalIdPattern.hasMatch(payload['workspace'] as String)) {
       throw ArgumentError('Choose a workspace.');
     }
+  }
+  if (op == 'workspace.create' && (payload['title'] as String).trim().isEmpty) {
+    throw ArgumentError('Enter a workspace name.');
+  }
+  if (op == 'create' || op == 'workspace.create') {
     bounded(payload['cwd'], 4096);
     final cwd = payload['cwd'] as String;
     if (cwd.isNotEmpty && !cwd.startsWith('/') && !cwd.startsWith('~/')) {
@@ -83,7 +99,10 @@ void validateSessionActionRoute(String op, Map<String, dynamic>? route) {
     'session',
     'targetHash',
     'generation',
-    if (op != 'create') ...['terminal', 'pane'],
+    if (!const {'create', 'workspace.create'}.contains(op)) ...[
+      'terminal',
+      'pane',
+    ],
   };
   if (route == null ||
       route.length != fields.length ||
@@ -99,7 +118,7 @@ void validateSessionActionRoute(String op, Map<String, dynamic>? route) {
             route[k] is! String ||
             !RegExp(r'^[0-9a-f]{64}$').hasMatch(route[k] as String),
       ) ||
-      op != 'create' &&
+      !const {'create', 'workspace.create'}.contains(op) &&
           ['terminal', 'pane'].any(
             (k) =>
                 route[k] is! String ||

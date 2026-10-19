@@ -48,7 +48,7 @@ func validateBridgeEnvelope(_ row:[String:Any],configuration:BridgeConfiguration
     return text.range(of:pattern,options:.regularExpression) != nil
   }
   let fields=Set(["type","protocol","nonce","lane","id","op","payload","route"])
-  let operations:[String:Set<String>]=["discovery":["catalog","machines","health"],"input":["input","send","rename","close","create","health"],"streams":["observe","resize","scroll","click","cancel","health"],"transfer":["image.begin","image.chunk","image.finish","image.cancel","health"]]
+  let operations:[String:Set<String>]=["discovery":["catalog","machines","health"],"input":["input","send","rename","close","create","workspace.create","health"],"streams":["observe","resize","scroll","click","cancel","health"],"transfer":["image.begin","image.chunk","image.finish","image.cancel","health"]]
   guard Set(row.keys).isSubset(of:fields), row["type"] as? String=="request",
         row["protocol"] as? String=="agentspace-bridge-v2", row["nonce"] as? String==configuration.nonce,
         row["lane"] as? String==configuration.lane, match(row["id"],#"^[1-9][0-9]{0,15}$"#),
@@ -56,16 +56,16 @@ func validateBridgeEnvelope(_ row:[String:Any],configuration:BridgeConfiguration
         let payload=row["payload"] as? [String:Any] else { throw HelperFault(message:"Unsupported bridge action.") }
   let terminalPattern=#"^[A-Za-z0-9_.:@%+/][A-Za-z0-9_.:@%+/-]{0,255}$"#
   var pane="p1"
-  if op.hasPrefix("image.") || ["input","send","observe","rename","close","create"].contains(op) {
-    let routeFields:Set<String> = op == "create" ? ["machine","session","targetHash","generation"] : ["machine","session","targetHash","generation","terminal","pane"]
+  if op.hasPrefix("image.") || ["input","send","observe","rename","close","create","workspace.create"].contains(op) {
+    let routeFields:Set<String> = ["create","workspace.create"].contains(op) ? ["machine","session","targetHash","generation"] : ["machine","session","targetHash","generation","terminal","pane"]
     guard let route=row["route"] as? [String:Any], Set(route.keys)==routeFields,
           match(route["machine"],#"^(?:gateway|[0-9a-f]{32})$"#), match(route["session"],#"^[A-Za-z0-9_.-]{1,64}$"#),
           ![".",".."].contains(route["session"] as! String), match(route["targetHash"],#"^[0-9a-f]{64}$"#),
           match(route["generation"],#"^[0-9a-f]{64}$"#),
-          (op == "create" || (match(route["terminal"],terminalPattern) && match(route["pane"],terminalPattern))) else {
+          (["create","workspace.create"].contains(op) || (match(route["terminal"],terminalPattern) && match(route["pane"],terminalPattern))) else {
       throw HelperFault(message:"Invalid terminal route.")
     }
-    if op != "create" { pane=route["pane"] as! String }
+    if !["create","workspace.create"].contains(op) { pane=route["pane"] as! String }
   }
   func dimensions() throws {
     guard let cols=bridgeInteger(payload["cols"]), let rows=bridgeInteger(payload["rows"]),
@@ -89,6 +89,11 @@ func validateBridgeEnvelope(_ row:[String:Any],configuration:BridgeConfiguration
     guard Set(payload.keys)==Set(["title"]),literal(payload["title"],limit:128) else { throw HelperFault(message:"Invalid terminal title.") }
   case "close":
     guard payload.isEmpty else { throw HelperFault(message:"Invalid terminal close.") }
+  case "workspace.create":
+    guard Set(payload.keys)==Set(["title","cwd"]),literal(payload["title"],limit:128),
+          let title=payload["title"] as? String,!title.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty,
+          literal(payload["cwd"],limit:4096),let cwd=payload["cwd"] as? String,
+          cwd.isEmpty || cwd.hasPrefix("/") || cwd.hasPrefix("~/") else { throw HelperFault(message:"Invalid workspace creation.") }
   case "create":
     guard Set(payload.keys)==Set(["workspace","title","cwd"]),match(payload["workspace"],terminalPattern),
           literal(payload["title"],limit:128),literal(payload["cwd"],limit:4096),let cwd=payload["cwd"] as? String,

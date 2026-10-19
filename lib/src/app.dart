@@ -282,6 +282,7 @@ class _WorkspaceShellState extends State<_WorkspaceShell>
                             newGroup();
                           },
                           newSession: () => showCreateSession(context, app),
+                          newWorkspace: () => showCreateWorkspace(context, app),
                           settings: () {
                             closeSidebar();
                             settings();
@@ -312,6 +313,8 @@ class _WorkspaceShellState extends State<_WorkspaceShell>
                             filter: filter,
                             newGroup: newGroup,
                             newSession: () => showCreateSession(context, app),
+                            newWorkspace: () =>
+                                showCreateWorkspace(context, app),
                             openWindow: widget.openWindow,
                             settings: settings,
                           ),
@@ -602,6 +605,7 @@ class _Sidebar extends StatelessWidget {
     required this.filter,
     required this.newGroup,
     required this.newSession,
+    required this.newWorkspace,
     required this.settings,
     this.openWindow,
     this.width = 208,
@@ -611,7 +615,7 @@ class _Sidebar extends StatelessWidget {
   final VoidCallback? onClose;
   final AppController app;
   final void Function(String) filter;
-  final VoidCallback newGroup, newSession, settings;
+  final VoidCallback newGroup, newSession, newWorkspace, settings;
   final OpenDesktopWindow? openWindow;
   @override
   Widget build(BuildContext context) => Container(
@@ -752,6 +756,19 @@ class _Sidebar extends StatelessWidget {
                 },
                 icon: const Icon(Icons.add_box_outlined, size: 17),
                 label: const Text('New session'),
+                style: TextButton.styleFrom(
+                  foregroundColor: const Color(0xffbdcada),
+                  alignment: Alignment.centerLeft,
+                  minimumSize: const Size.fromHeight(38),
+                ),
+              ),
+              TextButton.icon(
+                onPressed: () {
+                  onClose?.call();
+                  newWorkspace();
+                },
+                icon: const Icon(Icons.create_new_folder_outlined, size: 17),
+                label: const Text('New workspace'),
                 style: TextButton.styleFrom(
                   foregroundColor: const Color(0xffbdcada),
                   alignment: Alignment.centerLeft,

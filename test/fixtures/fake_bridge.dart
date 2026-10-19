@@ -134,7 +134,12 @@ class _Connection implements BridgeConnection {
 
   void reply(Map<String, dynamic> row) {
     if (closed) return;
-    final management = const {'rename', 'close', 'create'}.contains(row['op']);
+    final management = const {
+      'rename',
+      'close',
+      'create',
+      'workspace.create',
+    }.contains(row['op']);
     if (management) owner.managementRequests.add(row);
     if (management && owner.managementFault == 'lost') {
       unawaited(out.close());
@@ -186,10 +191,19 @@ class _Connection implements BridgeConnection {
       } else if (row['op'] == 'close') {
         agents.removeWhere((a) => a['terminal_id'] == route['terminal']);
       } else {
+        final workspace = row['op'] == 'workspace.create'
+            ? 'new-workspace'
+            : payload['workspace'];
+        if (row['op'] == 'workspace.create') {
+          (computer['catalog']['workspaces'] as List).add({
+            'workspace_id': workspace,
+            'label': payload['title'],
+          });
+        }
         agents.add({
           'terminal_id': 'new-terminal',
           'pane_id': 'new-pane',
-          'workspace_id': payload['workspace'],
+          'workspace_id': workspace,
           'tab_id': 'new-tab',
           'title': payload['title'] == '' ? 'Shell' : payload['title'],
           'agent': null,
@@ -198,7 +212,7 @@ class _Connection implements BridgeConnection {
         result['created'] = {
           'terminal': 'new-terminal',
           'pane': 'new-pane',
-          'workspace': payload['workspace'],
+          'workspace': workspace,
           'tab': 'new-tab',
         };
       }

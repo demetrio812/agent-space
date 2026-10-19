@@ -43,6 +43,7 @@ On Android, build and install the APK, then add an SSH connection. Ordinary pass
 ## Use
 
 - Right-click a session tile, or use its three-dot menu on touch, for **Rename** and **Close terminal…**. Rename changes Herdr’s pane title. Close asks for confirmation and ends that actual terminal and its running process; it leaves a saved favourite as an unavailable bookmark.
+- Choose **New workspace** in the sidebar to create a real Herdr workspace on the selected computer. Enter a name and optional folder; AgentSpace opens its first shell terminal. It uses the current session/computer/workspace selection and never silently switches away from an unavailable selected computer.
 - Choose **New session** in the toolbar or sidebar, select a computer and an existing Herdr workspace, and optionally enter a title and folder (`/…` or `~/…`). Leave the folder empty for Herdr’s default. AgentSpace creates a shell terminal; type your agent’s start command there.
 - Session actions require a connected, writable computer with management support. An uncertain action stops further management on that computer until you inspect its sessions and choose **I’ve checked** from **Check unconfirmed session action**. Typing has its own independent delivery checks. Actions are never automatically retried.
 

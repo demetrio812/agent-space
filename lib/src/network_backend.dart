@@ -411,6 +411,46 @@ class NetworkHerdrBackend
   }
 
   @override
+  Future<SessionInfo> createWorkspace(
+    SessionOrigin origin, {
+    required String title,
+    String cwd = '',
+  }) async {
+    final result = await _mutate(
+      'workspace.create',
+      origin,
+      origin.computerRoute,
+      {'title': title, 'cwd': cwd},
+    );
+    try {
+      final created = result['created'];
+      if (created is! Map ||
+          created['workspace'] is! String ||
+          !terminalIdPattern.hasMatch(created['workspace'] as String) ||
+          created['terminal'] is! String ||
+          created['pane'] is! String) {
+        throw const FormatException();
+      }
+      final sessions = await listSessions();
+      final computer = _managementComputer(origin);
+      if (!computer.workspaces.any((w) => w.id == created['workspace'])) {
+        throw const FormatException();
+      }
+      return sessions.singleWhere(
+        (s) =>
+            s.available &&
+            s.origin != null &&
+            sameSessionOrigin(s.origin!, origin) &&
+            s.key.terminal == created['terminal'] &&
+            s.paneId == created['pane'] &&
+            s.workspaceId == created['workspace'],
+      );
+    } catch (_) {
+      throw const SessionActionUncertain();
+    }
+  }
+
+  @override
   Future<void> sendText(SessionInfo session, String text) async {
     final current = _current(session, input: true);
     final bridge = _bridge;

@@ -29,6 +29,31 @@ class ActionsTests(unittest.TestCase):
         self.actions.mutate('close',self.route,{})
         self.assertEqual([a['terminal_id'] for a in self.herdr.agents],['new-terminal'])
 
+    def test_create_workspace_and_first_shell_without_focus_or_extra_tab(self):
+        result=self.actions.mutate('workspace.create',self.computer,{'title':"Project café $()",'cwd':'~/project'})
+        self.assertEqual(result['created']['workspace'],'new-workspace')
+        self.assertEqual(result['created']['terminal'],'new-terminal')
+        self.assertEqual(len(self.herdr.mutation_calls),1)
+        self.assertEqual(self.herdr.mutation_calls[0]['method'],'workspace.create')
+        self.assertEqual(self.herdr.mutation_calls[0]['params'],{'label':"Project café $()",'cwd':str(Path.home()/'project'),'focus':False,'env':{}})
+        self.assertIsNone(self.herdr.agents[-1]['agent'])
+
+    def test_workspace_invalid_or_lost_ack_never_retries(self):
+        for payload in ({'title':' ','cwd':''},{'title':'a','cwd':'relative'},{'title':'a','cwd':'','command':'evil'}):
+            with self.assertRaises(BridgeRejected): self.actions.mutate('workspace.create',self.computer,payload)
+        with self.assertRaises(BridgeRejected): self.actions.mutate('workspace.create',self.route,{'title':'a','cwd':''})
+        self.assertEqual(self.herdr.mutation_calls,[])
+        self.herdr.lose_management_ack=True
+        with self.assertRaises(DeliveryUncertain): self.actions.mutate('workspace.create',self.computer,{'title':'Work','cwd':''})
+        self.assertEqual(len(self.herdr.mutation_calls),1)
+
+    def test_workspace_ack_must_agree_with_created_pane(self):
+        self.herdr.management_result={'type':'workspace_created','workspace':{'workspace_id':'different'},
+            'tab':{'tab_id':'new-tab','workspace_id':'new-workspace'},
+            'root_pane':{'terminal_id':'new-terminal','pane_id':'new-pane','tab_id':'new-tab','workspace_id':'new-workspace'}}
+        with self.assertRaises(DeliveryUncertain): self.actions.mutate('workspace.create',self.computer,{'title':'Work','cwd':''})
+        self.assertEqual(len(self.herdr.mutation_calls),1)
+
     def test_saved_pane_label_is_visible_after_rename_and_clear(self):
         # Herdr 0.9.3 keeps manual labels in pane.list, not agent.list.
         self.herdr.agents[0]['title']='Agent-generated title'

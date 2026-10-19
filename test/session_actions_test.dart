@@ -35,6 +35,52 @@ class Harness {
 
 void main() {
   test(
+    'workspace creation uses the selected peer and returns its first shell',
+    () async {
+      final h = Harness();
+      addTearDown(h.backend.close);
+      await h.start();
+      final computer = h.backend.sessionComputers.last;
+      final created = await h.backend.createWorkspace(
+        computer.origin,
+        title: 'Research',
+        cwd: '~/research',
+      );
+      expect(created.origin!.machineId, fixtureMachineB);
+      expect(created.workspaceId, 'new-workspace');
+      expect(created.agent, 'terminal');
+      expect(h.wire.managementRequests.single['op'], 'workspace.create');
+      expect(
+        h.wire.managementRequests.single['route'],
+        computer.origin.computerRoute,
+      );
+      expect(h.wire.managementRequests.single['payload'], {
+        'title': 'Research',
+        'cwd': '~/research',
+      });
+      expect(h.backend.sessionComputers.first.workspaces, hasLength(1));
+      expect(h.backend.sessionComputers.last.workspaces.last.label, 'Research');
+    },
+  );
+  test(
+    'lost workspace acknowledgement is uncertain and never resubmitted',
+    () async {
+      final h = Harness();
+      addTearDown(h.backend.close);
+      await h.start();
+      h.wire.managementFault = 'lost';
+      await expectLater(
+        h.backend.createWorkspace(
+          h.backend.sessionComputers.last.origin,
+          title: 'Research',
+        ),
+        throwsA(isA<SessionActionUncertain>()),
+      );
+      expect(h.wire.managementRequests, hasLength(1));
+    },
+  );
+
+  test(
     'typed actions preserve peer route and verify returned shell identity',
     () async {
       final h = Harness();

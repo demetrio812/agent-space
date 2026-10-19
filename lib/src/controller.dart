@@ -1715,6 +1715,30 @@ class AppController extends ChangeNotifier {
     );
   }
 
+  Future<SessionInfo> createWorkspace(
+    SessionOrigin origin, {
+    required String title,
+    String cwd = '',
+  }) async {
+    validateSessionAction('workspace.create', {'title': title, 'cwd': cwd});
+    return _sessionAction(
+      'workspace.create',
+      origin,
+      (backend) => backend.createWorkspace(origin, title: title, cwd: cwd),
+      applied: (created) {
+        if (created.origin == null ||
+            !sameSessionOrigin(created.origin!, origin) ||
+            created.workspaceId.isEmpty) {
+          throw const SessionActionUncertain();
+        }
+        sessions = [...sessions.where((s) => s.key != created.key), created];
+        layout.filter = scopedWorkspaceId(origin, created.workspaceId);
+        search = '';
+        select(created.key.id);
+      },
+    );
+  }
+
   void acknowledgeSessionAction(String computerId) {
     if (sessionActionStates[computerId]?.pending == true) return;
     layout.uncertainActions.remove(computerId);

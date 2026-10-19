@@ -174,6 +174,14 @@ Future<void> showCreateSession(BuildContext context, AppController app) =>
       builder: (_) => _SessionActionDialog(app: app, operation: 'create'),
     );
 
+Future<void> showCreateWorkspace(BuildContext context, AppController app) =>
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) =>
+          _SessionActionDialog(app: app, operation: 'workspace.create'),
+    );
+
 Future<void> showSessionActionInspection(
   BuildContext context,
   AppController app,
@@ -241,7 +249,8 @@ class _SessionActionDialogState extends State<_SessionActionDialog> {
   SessionOrigin? origin;
   String? workspaceId, error;
   bool pending = false;
-  bool get creating => widget.operation == 'create';
+  bool get creatingWorkspace => widget.operation == 'workspace.create';
+  bool get creating => widget.operation == 'create' || creatingWorkspace;
   @override
   void initState() {
     super.initState();
@@ -305,6 +314,13 @@ class _SessionActionDialogState extends State<_SessionActionDialog> {
           await widget.app.renameSession(widget.session!, title.text);
         case 'close':
           await widget.app.closeSession(widget.session!);
+        case 'workspace.create':
+          if (origin == null) throw SessionUnavailable('Choose a computer.');
+          await widget.app.createWorkspace(
+            origin!,
+            title: title.text.trim(),
+            cwd: folder.text,
+          );
         case 'create':
           if (origin == null || workspace == null) {
             throw SessionUnavailable('Choose a computer and workspace.');
@@ -345,11 +361,12 @@ class _SessionActionDialogState extends State<_SessionActionDialog> {
           .where((w) => w.id == workspaceId)
           .firstOrNull;
       final valid =
+          (!creatingWorkspace || title.text.trim().isNotEmpty) &&
           source == app.source &&
           origin != null &&
           (creating
               ? computer != null &&
-                    workspace != null &&
+                    (creatingWorkspace || workspace != null) &&
                     app.canManageComputer(origin!)
               : app.canManageSession(widget.session!));
       final uncertain =
@@ -359,6 +376,7 @@ class _SessionActionDialogState extends State<_SessionActionDialog> {
       final action = switch (widget.operation) {
         'rename' => 'Rename',
         'close' => 'Close terminal',
+        'workspace.create' => 'Create workspace',
         _ => 'Create session',
       };
       return PopScope(
@@ -367,6 +385,7 @@ class _SessionActionDialogState extends State<_SessionActionDialog> {
           title: Text(switch (widget.operation) {
             'rename' => 'Rename terminal',
             'close' => 'Close terminal?',
+            'workspace.create' => 'New workspace',
             _ => 'New session',
           }),
           content: SizedBox(
@@ -424,31 +443,35 @@ class _SessionActionDialogState extends State<_SessionActionDialog> {
                       ),
                     ),
                     const SizedBox(height: 16),
-                    InputDecorator(
-                      decoration: const InputDecoration(labelText: 'Workspace'),
-                      child: DropdownButtonHideUnderline(
-                        child: DropdownButton<String>(
-                          key: const ValueKey('new-session-workspace'),
-                          isExpanded: true,
-                          value: workspace?.id,
-                          hint: const Text('Choose workspace'),
-                          items: [
-                            for (final w
-                                in computer?.workspaces ?? <SessionWorkspace>[])
-                              DropdownMenuItem(
-                                value: w.id,
-                                child: Text(
-                                  w.label.isEmpty ? w.id : w.label,
-                                  overflow: TextOverflow.ellipsis,
+                    if (!creatingWorkspace)
+                      InputDecorator(
+                        decoration: const InputDecoration(
+                          labelText: 'Workspace',
+                        ),
+                        child: DropdownButtonHideUnderline(
+                          child: DropdownButton<String>(
+                            key: const ValueKey('new-session-workspace'),
+                            isExpanded: true,
+                            value: workspace?.id,
+                            hint: const Text('Choose workspace'),
+                            items: [
+                              for (final w
+                                  in computer?.workspaces ??
+                                      <SessionWorkspace>[])
+                                DropdownMenuItem(
+                                  value: w.id,
+                                  child: Text(
+                                    w.label.isEmpty ? w.id : w.label,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
                                 ),
-                              ),
-                          ],
-                          onChanged: pending
-                              ? null
-                              : (id) => setState(() => workspaceId = id),
+                            ],
+                            onChanged: pending
+                                ? null
+                                : (id) => setState(() => workspaceId = id),
+                          ),
                         ),
                       ),
-                    ),
                     const SizedBox(height: 16),
                   ],
                   if (widget.operation == 'close')
@@ -463,7 +486,11 @@ class _SessionActionDialogState extends State<_SessionActionDialog> {
                       autofocus: !creating,
                       maxLength: 128,
                       decoration: InputDecoration(
-                        labelText: creating ? 'Title (optional)' : 'Title',
+                        labelText: creatingWorkspace
+                            ? 'Workspace name'
+                            : creating
+                            ? 'Title (optional)'
+                            : 'Title',
                       ),
                       onChanged: (_) => setState(() => error = null),
                     ),
@@ -481,11 +508,16 @@ class _SessionActionDialogState extends State<_SessionActionDialog> {
                       onChanged: (_) => setState(() => error = null),
                     ),
                     const SizedBox(height: 16),
-                    const Text(
-                      'Creates a shell terminal. Start your agent from its command prompt.',
+                    Text(
+                      creatingWorkspace
+                          ? 'Creates a Herdr workspace on this computer and opens its first shell terminal.'
+                          : 'Creates a shell terminal. Start your agent from its command prompt.',
                     ),
                   ],
-                  if (!valid && !pending && !uncertain)
+                  if (!valid &&
+                      !pending &&
+                      !uncertain &&
+                      (!creatingWorkspace || title.text.trim().isNotEmpty))
                     const Padding(
                       padding: EdgeInsets.only(top: 16),
                       child: Text(

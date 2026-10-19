@@ -31,6 +31,7 @@ class DemoBackend
   final _renamed = <String, String>{}, _closedSessions = <String>{};
   final _created = <SessionInfo>[];
   int _createdCount = 0;
+  final _createdWorkspaces = <SessionWorkspace>[];
   static const demoOrigin = SessionOrigin(
     profile: 'demo',
     machineId: 'gateway',
@@ -47,10 +48,11 @@ class DemoBackend
       origin: demoOrigin,
       state: ComputerState.live,
       managementEnabled: true,
-      workspaces: const [
+      workspaces: [
         SessionWorkspace('demo-workspace-0', 'Studio'),
         SessionWorkspace('demo-workspace-1', 'Library'),
-        SessionWorkspace('demo-workspace-2', 'AgentSpace'),
+        const SessionWorkspace('demo-workspace-2', 'AgentSpace'),
+        ..._createdWorkspaces,
       ],
     ),
   ];
@@ -188,6 +190,24 @@ class DemoBackend
     );
     _created.add(session);
     return session;
+  }
+
+  @override
+  Future<SessionInfo> createWorkspace(
+    SessionOrigin origin, {
+    required String title,
+    String cwd = '',
+  }) async {
+    validateSessionAction('workspace.create', {'title': title, 'cwd': cwd});
+    if (_closed || !sameSessionOrigin(origin, demoOrigin)) {
+      throw SessionUnavailable();
+    }
+    final workspace = SessionWorkspace(
+      'created-workspace-${_createdWorkspaces.length + 1}',
+      title,
+    );
+    _createdWorkspaces.add(workspace);
+    return createSession(origin, workspace, cwd: cwd);
   }
 
   TerminalFrame _frame(SessionInfo session) {

@@ -32,7 +32,16 @@ void main() {
           await tester.pumpAndSettle();
         }
         final menu = find.byKey(ValueKey('group-menu-${group.id}'));
-        await tester.ensureVisible(menu);
+        await tester.scrollUntilVisible(
+          menu,
+          100,
+          scrollable: find
+              .descendant(
+                of: find.byType(ListView).first,
+                matching: find.byType(Scrollable),
+              )
+              .first,
+        );
         await tester.pumpAndSettle();
         await tester.tap(menu);
         await tester.pumpAndSettle();
@@ -111,6 +120,7 @@ void main() {
         await tester.pumpAndSettle();
         final row = find.byKey(ValueKey('group-row-${group.id}'));
         await tester.ensureVisible(row);
+        await tester.pumpAndSettle();
         await tester.tapAt(
           tester.getCenter(row),
           buttons: kSecondaryMouseButton,

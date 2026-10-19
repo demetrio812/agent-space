@@ -138,6 +138,13 @@ final class BridgeJobTests: XCTestCase {
     XCTAssertNoThrow(try validateBridgeEnvelope(row("rename",terminal,["title":"Review café"]),configuration:configuration))
     XCTAssertNoThrow(try validateBridgeEnvelope(row("close",terminal,[:]),configuration:configuration))
     XCTAssertNoThrow(try validateBridgeEnvelope(row("create",computer,["workspace":"w1","title":"Shell","cwd":"~/project"]),configuration:configuration))
+    XCTAssertNoThrow(try validateBridgeEnvelope(row("workspace.create",computer,["title":"Research","cwd":"~/project"]),configuration:configuration))
+    for invalid in [row("workspace.create",terminal,["title":"Research","cwd":""]),
+                    row("workspace.create",computer,["title":" ","cwd":""]),
+                    row("workspace.create",computer,["title":"Research","cwd":"relative"]),
+                    row("workspace.create",computer,["title":"Research","cwd":"","command":"evil"])] {
+      XCTAssertThrowsError(try validateBridgeEnvelope(invalid,configuration:configuration))
+    }
     for bad in [row("rename",terminal,["title":"x","method":"shell"]),row("rename",terminal,["title":String(repeating:"é",count:65)]),
                 row("rename",terminal,["title":"bad\n"]),row("close",computer,[:]),row("close",terminal,["force":true]),
                 row("create",terminal,["workspace":"w1","title":"","cwd":""]),row("create",computer,["workspace":"w1","title":"","cwd":"relative"]),

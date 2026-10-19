@@ -133,7 +133,7 @@ class LocalWorker:
         if self._management_compatible is None:
             try:
                 env=dict(os.environ,HERDR_SOCKET_PATH=self.config['socket'])
-                for args in [('pane','rename','--help'),('pane','close','--help'),('tab','create','--help')]:
+                for args in [('pane','rename','--help'),('pane','close','--help'),('tab','create','--help'),('workspace','create','--help')]:
                     data=gate.bounded_catalog(self.config['herdr'],env,args)
                     if not data: raise ValueError('Missing capabilities')
                 self._management_compatible=True

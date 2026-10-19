@@ -36,7 +36,7 @@ root=Path(os.environ['HERDR_SOCKET_PATH']).parent
 with (root/'cli-calls').open('a') as f: f.write(json.dumps(sys.argv[1:])+'\\n')
 if sys.argv[1:]==['terminal','session','--help']:
  print('observe' if (root/'older-herdr').exists() else 'control\\nobserve'); sys.exit()
-if '--help' in sys.argv and sys.argv[1] in ('pane','tab'):
+if '--help' in sys.argv and sys.argv[1] in ('pane','tab','workspace'):
  print('Usage: label pane_id workspace cwd focus'); sys.exit()
 if sys.argv[1:3]==['machine','list']:
  print((root/'machines.json').read_text() if (root/'machines.json').exists() else '[]'); sys.exit()
@@ -90,7 +90,7 @@ else:
                       'tab.list': {'tabs': []},
                       'pane.list': {'panes': [{**a, 'label': self.pane_labels.get(a['pane_id'])} for a in self.agents] + self.extra_panes},
                       'pane.layout': {'layout': {'panes':[{'pane_id':'p1','rect':{'width':90,'height':30}}]}}}.get(method, {'type':'ok'})
-            if method in ('pane.rename','pane.close','tab.create'):
+            if method in ('pane.rename','pane.close','tab.create','workspace.create'):
                 self.mutation_calls.append(row)
                 params=row['params']
                 if method=='pane.rename':
@@ -101,11 +101,15 @@ else:
                 elif method=='pane.close':
                     self.agents=[a for a in self.agents if a['pane_id']!=params['pane_id']]
                 else:
-                    agent={'terminal_id':'new-terminal','pane_id':'new-pane','workspace_id':params['workspace_id'],
+                    workspace={'workspace_id':'new-workspace','label':params.get('label') or 'Workspace'} if method=='workspace.create' else None
+                    if workspace: self.workspaces.append(workspace)
+                    wid=workspace['workspace_id'] if workspace else params['workspace_id']
+                    agent={'terminal_id':'new-terminal','pane_id':'new-pane','workspace_id':wid,
                            'tab_id':'new-tab','title':params.get('label') or 'Shell','agent':None}
                     self.agents.append(agent)
-                    result={'type':'tab_created','tab':{'tab_id':'new-tab','workspace_id':params['workspace_id']},
+                    result={'type':'workspace_created' if workspace else 'tab_created','tab':{'tab_id':'new-tab','workspace_id':wid},
                             'root_pane':agent}
+                    if workspace: result['workspace']=workspace
                 if self.lose_management_ack:
                     self.lose_management_ack=False; return
                 if self.management_result is not None: result=self.management_result

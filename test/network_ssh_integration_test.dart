@@ -144,6 +144,7 @@ void main() {
               'pane.rename',
               'pane.close',
               'tab.create',
+              'workspace.create',
             }.contains(r['method']),
           )
           .toList();
@@ -374,6 +375,43 @@ void main() {
       await bView.cancel();
     }
   }, skip: skip);
+
+  test(
+    'workspace SSH creates only on the selected peer',
+    () async {
+      final value = backend();
+      final b = peer(await value.listSessions(), 'b');
+      final computer = value.sessionComputers.singleWhere(
+        (c) => c.origin.machineId == b.origin!.machineId,
+      );
+      final created = await value.createWorkspace(
+        computer.origin,
+        title: 'Research',
+        cwd: '~/research',
+      );
+      expect(created.origin!.machineId, b.origin!.machineId);
+      expect(created.workspaceId, 'new-workspace');
+      expect(created.agent, 'terminal');
+      final stats = await control('stats');
+      expect(mutations(stats, 'gateway'), isEmpty);
+      expect(mutations(stats, 'a'), isEmpty);
+      expect(mutations(stats, 'b').map((r) => r['method']), [
+        'workspace.create',
+      ]);
+      expect(mutations(stats, 'b').single['params']['label'], 'Research');
+      expect(mutations(stats, 'b').single['params']['focus'], false);
+      expect(
+        value.sessionComputers
+            .singleWhere((c) => c.origin.machineId == b.origin!.machineId)
+            .workspaces
+            .last
+            .label,
+        'Research',
+      );
+    },
+    skip: skip,
+    timeout: const Timeout(Duration(seconds: 60)),
+  );
 
   test(
     'management SSH routes shells to the named peer and preserves existing keyboard stream',
