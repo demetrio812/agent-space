@@ -1,3 +1,5 @@
+import 'git_metadata.dart';
+
 import 'dart:convert';
 
 import 'network_models.dart';
@@ -108,6 +110,7 @@ class SessionInfo {
     required this.project,
     required this.agent,
     required this.status,
+    this.git = const GitMetadata(),
     this.workspaceId = '',
     this.workspaceLabel = '',
     this.terminalTitle = '',
@@ -118,6 +121,7 @@ class SessionInfo {
     this.available = true,
     this.origin,
   });
+  final GitMetadata git;
   final SessionKey key;
   final SessionOrigin? origin;
   String get computerId =>
@@ -142,6 +146,7 @@ class SessionInfo {
     status: status,
     workspaceId: workspaceId,
     workspaceLabel: workspaceLabel,
+    git: git,
     terminalTitle: terminalTitle,
     inputEnabled: inputEnabled,
     terminalInputEnabled: terminalInputEnabled,
@@ -172,6 +177,7 @@ class SessionInfo {
     status: status,
     workspaceId: workspaceId,
     workspaceLabel: workspaceLabel,
+    git: git,
     terminalTitle: terminalTitle,
     inputEnabled: false,
     available: false,
@@ -185,6 +191,7 @@ class SessionInfo {
     'status': status.name,
     'workspace': workspaceId,
     'workspaceLabel': workspaceLabel,
+    'git': git.toJson(),
     'terminalTitle': terminalTitle,
     if (origin != null) 'origin': origin!.toJson(),
   };
@@ -224,6 +231,7 @@ class SessionInfo {
           ? json['workspace']
           : '',
       workspaceLabel: displayText(json['workspaceLabel']),
+      git: GitMetadata.fromJson(json['git']),
       terminalTitle: displayText(json['terminalTitle']),
       inputEnabled: false,
       available: false,
@@ -327,6 +335,7 @@ List<SessionInfo> parseCatalog(String json, String profile) {
               : displayText(item['agent']),
           status: SessionStatus.parse(displayText(item['agent_status'])),
           workspaceId: workspace,
+          git: GitMetadata.fromJson(item['gitMetadata']),
           workspaceLabel:
               workspaceNames[workspace] ??
               (project.isEmpty ? 'Ungrouped' : project),

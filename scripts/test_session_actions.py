@@ -54,6 +54,38 @@ class ActionsTests(unittest.TestCase):
         with self.assertRaises(DeliveryUncertain): self.actions.mutate('workspace.create',self.computer,{'title':'Work','cwd':''})
         self.assertEqual(len(self.herdr.mutation_calls),1)
 
+    def test_workspace_rename_and_close_only_selected_workspace(self):
+        self.herdr.workspaces.append({'workspace_id':'other','label':'Keep'})
+        self.herdr.agents.append({'terminal_id':'t2','pane_id':'p2','workspace_id':'other','tab_id':'tab2'})
+        self.actions.mutate('workspace.rename',self.computer,{'workspace':'w1','title':'Research'})
+        self.assertEqual(self.api.catalog()['workspaces'][0]['label'],'Research')
+        self.actions.mutate('workspace.close',self.computer,{'workspace':'w1'})
+        self.assertEqual(self.herdr.mutation_calls[-1]['params'],{'workspace_id':'w1','close_group':False})
+        self.assertEqual([a['terminal_id'] for a in self.herdr.agents],['t2'])
+        self.assertEqual(self.herdr.workspaces,[{'workspace_id':'other','label':'Keep'}])
+
+    def test_workspace_group_rejection_is_definite_and_closes_nothing(self):
+        self.herdr.reject_workspace_group=True
+        with self.assertRaises(BridgeRejected) as caught:
+            self.actions.mutate('workspace.close',self.computer,{'workspace':'w1'})
+        self.assertEqual(caught.exception.code,'workspace_group_close_required')
+        self.assertFalse(caught.exception.dispatched)
+        self.assertEqual(self.herdr.mutation_calls,[])
+        self.assertEqual(len(self.herdr.workspaces),1)
+
+    def test_workspace_validation_and_lost_ack(self):
+        for op,payload in [('workspace.rename',{'workspace':'w1','title':''}),
+                           ('workspace.close',{'workspace':'missing'}),
+                           ('workspace.close',{'workspace':'w1','close_group':True})]:
+            with self.assertRaises(BridgeRejected):self.actions.mutate(op,self.computer,payload)
+        with self.assertRaises(BridgeRejected):self.actions.mutate('workspace.close',self.route,{'workspace':'w1'})
+        self.assertEqual(self.herdr.mutation_calls,[])
+        self.herdr.lose_management_ack=True
+        with self.assertRaises(DeliveryUncertain):self.actions.mutate('workspace.rename',self.computer,{'workspace':'w1','title':'Renamed'})
+        self.assertEqual(len(self.herdr.mutation_calls),1)
+        self.herdr.management_result={'type':'workspace_renamed','workspace_id':'other','label':'Renamed'}
+        with self.assertRaises(DeliveryUncertain):self.actions.mutate('workspace.rename',self.computer,{'workspace':'w1','title':'Renamed'})
+
     def test_saved_pane_label_is_visible_after_rename_and_clear(self):
         # Herdr 0.9.3 keeps manual labels in pane.list, not agent.list.
         self.herdr.agents[0]['title']='Agent-generated title'

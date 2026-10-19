@@ -34,6 +34,95 @@ class Harness {
 }
 
 void main() {
+  test('linked-worktree refusal is a definite rejection', () {
+    final error = bridgeRejection({
+      'code': 'workspace_group_close_required',
+      'dispatched': false,
+    }, input: true);
+    expect(error, isA<SessionUnavailable>());
+    expect(error.toString(), contains('Nothing was closed'));
+    expect(
+      bridgeRejection({
+        'code': 'workspace_group_close_required',
+        'dispatched': true,
+      }, input: true),
+      isA<DeliveryUncertain>(),
+    );
+  });
+  test(
+    'workspace rename and close are scoped and verify current workspace',
+    () async {
+      final h = Harness();
+      addTearDown(h.backend.close);
+      await h.start();
+      final c = h.backend.sessionComputers.last, w = c.workspaces.single;
+      await h.backend.renameWorkspace(c.origin, w, 'Research');
+      await h.backend.listSessions();
+      expect(
+        h.backend.sessionComputers.last.workspaces.single.label,
+        'Research',
+      );
+      expect(
+        h.backend.sessionComputers.first.workspaces.single.label,
+        'Workbench',
+      );
+      await h.backend.closeWorkspace(c.origin, w);
+      final remaining = await h.backend.listSessions();
+      expect(remaining, hasLength(1));
+      expect(remaining.single.origin!.machineId, fixtureMachineA);
+      expect(h.wire.managementRequests.map((r) => r['op']), [
+        'workspace.rename',
+        'workspace.close',
+      ]);
+      expect(
+        h.wire.managementRequests.every(
+          (r) => r['route']['machine'] == fixtureMachineB,
+        ),
+        true,
+      );
+      await expectLater(
+        h.backend.closeWorkspace(c.origin, w),
+        throwsA(isA<SessionUnavailable>()),
+      );
+      expect(h.wire.managementRequests, hasLength(2));
+    },
+  );
+  test(
+    'workspace rename lost acknowledgement persists the inspection gate',
+    () async {
+      final h = Harness();
+      final directory = await Directory.systemTemp.createTemp(
+        'workspace-action-',
+      );
+      final app = AppController(
+        snapshot: AppSnapshot()..activeSource = 'remote',
+        store: LayoutStore(directory.path),
+        backendFactory: (_) => h.backend,
+      );
+      addTearDown(() async {
+        await app.shutdown();
+        await directory.delete(recursive: true);
+      });
+      await app.start(polling: false);
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      final c = app.computers.last, w = c.workspaces.single;
+      h.wire.managementFault = 'lost';
+      await expectLater(
+        app.renameWorkspace(c.origin, w, 'Research'),
+        throwsA(isA<SessionActionUncertain>()),
+      );
+      expect(
+        app.layout.uncertainActions[c.origin.computerId]!.operation,
+        'workspace.rename',
+      );
+      await expectLater(
+        app.closeWorkspace(c.origin, w),
+        throwsA(isA<SessionUnavailable>()),
+      );
+      expect(h.wire.managementRequests, hasLength(1));
+    },
+  );
+
   test(
     'workspace creation uses the selected peer and returns its first shell',
     () async {

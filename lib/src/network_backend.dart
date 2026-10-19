@@ -410,6 +410,37 @@ class NetworkHerdrBackend
     }
   }
 
+  void _checkWorkspace(SessionOrigin origin, SessionWorkspace workspace) {
+    if (!_managementComputer(origin).workspaces
+        .any((w) => w.id == workspace.id)) {
+      throw SessionUnavailable('This workspace is no longer available.');
+    }
+  }
+
+  @override
+  Future<void> renameWorkspace(
+    SessionOrigin origin,
+    SessionWorkspace workspace,
+    String title,
+  ) async {
+    _checkWorkspace(origin, workspace);
+    await _mutate('workspace.rename', origin, origin.computerRoute, {
+      'workspace': workspace.id,
+      'title': title,
+    });
+  }
+
+  @override
+  Future<void> closeWorkspace(
+    SessionOrigin origin,
+    SessionWorkspace workspace,
+  ) async {
+    _checkWorkspace(origin, workspace);
+    await _mutate('workspace.close', origin, origin.computerRoute, {
+      'workspace': workspace.id,
+    });
+  }
+
   @override
   Future<SessionInfo> createWorkspace(
     SessionOrigin origin, {

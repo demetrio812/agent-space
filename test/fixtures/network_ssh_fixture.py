@@ -197,6 +197,9 @@ def handle_control(connection):
                     data=path.read_bytes()
                     files.append({'path':str(path),'mode':path.stat().st_mode&0o777,'bytes':base64.b64encode(data).decode(),'sha256':hashlib.sha256(data).hexdigest()})
                 result[name]=files
+        elif op=='metadata':
+            node.herdr.agents[0]['tokens']=row.get('tokens',{})
+            result={'ok':True}
         elif op=='replace': node.herdr.replace_socket(); result={'ok':True}
         elif op=='route':
             next(m for m in machines if m['id']==row['machine']).update(row['changes']); save_machines(); result={'ok':True}

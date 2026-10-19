@@ -8,6 +8,8 @@ const sessionManagementOperations = {
   'close',
   'create',
   'workspace.create',
+  'workspace.rename',
+  'workspace.close',
 };
 
 abstract interface class SessionManagementBackend {
@@ -16,6 +18,12 @@ abstract interface class SessionManagementBackend {
     required String title,
     String cwd = '',
   });
+  Future<void> renameWorkspace(
+    SessionOrigin origin,
+    SessionWorkspace workspace,
+    String title,
+  );
+  Future<void> closeWorkspace(SessionOrigin origin, SessionWorkspace workspace);
   void cancelPendingSessionActions();
   List<ComputerInfo> get sessionComputers;
   Future<void> renameSession(SessionInfo session, String title);
@@ -59,6 +67,8 @@ void validateSessionAction(String op, Map<String, dynamic> payload) {
     'close' => <String>{},
     'create' => {'workspace', 'title', 'cwd'},
     'workspace.create' => {'title', 'cwd'},
+    'workspace.rename' => {'workspace', 'title'},
+    'workspace.close' => {'workspace'},
     _ => throw ArgumentError('Unsupported session action.'),
   };
   if (payload.length != fields.length || !fields.containsAll(payload.keys)) {
@@ -74,14 +84,15 @@ void validateSessionAction(String op, Map<String, dynamic> payload) {
     }
   }
 
-  if (op != 'close') bounded(payload['title'], 128);
-  if (op == 'create') {
+  if (op != 'close' && op != 'workspace.close') bounded(payload['title'], 128);
+  if (const {'create', 'workspace.rename', 'workspace.close'}.contains(op)) {
     if (payload['workspace'] is! String ||
         !terminalIdPattern.hasMatch(payload['workspace'] as String)) {
       throw ArgumentError('Choose a workspace.');
     }
   }
-  if (op == 'workspace.create' && (payload['title'] as String).trim().isEmpty) {
+  if (const {'workspace.create', 'workspace.rename'}.contains(op) &&
+      (payload['title'] as String).trim().isEmpty) {
     throw ArgumentError('Enter a workspace name.');
   }
   if (op == 'create' || op == 'workspace.create') {
@@ -99,7 +110,12 @@ void validateSessionActionRoute(String op, Map<String, dynamic>? route) {
     'session',
     'targetHash',
     'generation',
-    if (!const {'create', 'workspace.create'}.contains(op)) ...[
+    if (!const {
+      'create',
+      'workspace.create',
+      'workspace.rename',
+      'workspace.close',
+    }.contains(op)) ...[
       'terminal',
       'pane',
     ],
@@ -118,7 +134,12 @@ void validateSessionActionRoute(String op, Map<String, dynamic>? route) {
             route[k] is! String ||
             !RegExp(r'^[0-9a-f]{64}$').hasMatch(route[k] as String),
       ) ||
-      !const {'create', 'workspace.create'}.contains(op) &&
+      !const {
+            'create',
+            'workspace.create',
+            'workspace.rename',
+            'workspace.close',
+          }.contains(op) &&
           ['terminal', 'pane'].any(
             (k) =>
                 route[k] is! String ||

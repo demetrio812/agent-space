@@ -119,7 +119,16 @@ void main() {
         await tester.pumpWidget(AgentSpaceApp(controller: app));
         await tester.pumpAndSettle();
         final row = find.byKey(ValueKey('group-row-${group.id}'));
-        await tester.ensureVisible(row);
+        await tester.scrollUntilVisible(
+          row,
+          100,
+          scrollable: find
+              .descendant(
+                of: find.byType(ListView).first,
+                matching: find.byType(Scrollable),
+              )
+              .first,
+        );
         await tester.pumpAndSettle();
         await tester.tapAt(
           tester.getCenter(row),

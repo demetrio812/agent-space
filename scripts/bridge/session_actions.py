@@ -11,7 +11,7 @@ except ImportError:
     from protocol import BridgeRejected, DeliveryUncertain, IDENTITY, GENERATION, validate_route
     from local_api import failed
 
-MANAGEMENT = frozenset(('rename','close','create','workspace.create'))
+MANAGEMENT = frozenset(('rename','close','create','workspace.create','workspace.rename','workspace.close'))
 COMPUTER_FIELDS = {'machine','session','targetHash','generation'}
 
 def validate_computer_route(route):
@@ -26,7 +26,7 @@ def validate_computer_route(route):
 
 
 def validate_management_route(op,route):
-    if op in ('create','workspace.create'): return validate_computer_route(route)
+    if op in ('create','workspace.create','workspace.rename','workspace.close'): return validate_computer_route(route)
     if not isinstance(route,dict) or set(route)!=COMPUTER_FIELDS|{'terminal','pane'}:
         raise BridgeRejected('invalid_request')
     validate_computer_route({k:route[k] for k in COMPUTER_FIELDS})
@@ -42,12 +42,12 @@ def text(value,limit):
 
 def validate_action(op,payload):
     if not isinstance(payload,dict): raise BridgeRejected('invalid_request')
-    fields={'rename':{'title'},'close':set(),'create':{'workspace','title','cwd'},'workspace.create':{'title','cwd'}}
+    fields={'rename':{'title'},'close':set(),'create':{'workspace','title','cwd'},'workspace.create':{'title','cwd'},'workspace.rename':{'workspace','title'},'workspace.close':{'workspace'}}
     if op not in fields or set(payload)!=fields[op]: raise BridgeRejected('invalid_request')
-    if op!='close': text(payload['title'],128)
-    if op=='create':
+    if op not in ('close','workspace.close'): text(payload['title'],128)
+    if op in ('create','workspace.rename','workspace.close'):
         if not isinstance(payload['workspace'],str) or not IDENTITY.fullmatch(payload['workspace']): raise BridgeRejected('invalid_request')
-    if op=='workspace.create' and not payload['title'].strip(): raise BridgeRejected('invalid_request')
+    if op in ('workspace.create','workspace.rename') and not payload['title'].strip(): raise BridgeRejected('invalid_request')
     if op in ('create','workspace.create'):
         cwd=text(payload['cwd'],4096)
         if cwd and not (cwd.startswith('/') or cwd.startswith('~/')): raise BridgeRejected('invalid_request')
@@ -73,25 +73,33 @@ class SessionActions:
             check(); submitted=True
         with self.api._dispatch_lock:
             check()
-            if op in ('create','workspace.create'):
+            if op in ('create','workspace.create','workspace.rename','workspace.close'):
                 workspaces=self.api.call('workspace.list',{},time.monotonic()+4).get('result',{}).get('workspaces')
                 if not isinstance(workspaces,list) or len(workspaces)>4096: raise BridgeRejected('invalid_request')
-                if op=='create' and sum(isinstance(w,dict) and w.get('workspace_id')==payload['workspace'] for w in workspaces)!=1:
+                if op!='workspace.create' and sum(isinstance(w,dict) and w.get('workspace_id')==payload['workspace'] for w in workspaces)!=1:
                     raise BridgeRejected('workspace_missing')
-                cwd=payload['cwd']
-                if cwd.startswith('~/'): cwd=str(Path.home()/cwd[2:])
-                params={'label':payload['title'] or None,'cwd':cwd or None,'focus':False,'env':{}}
-                if op=='create': params['workspace_id']=payload['workspace']
+                if op in ('workspace.rename','workspace.close'):
+                    params={'workspace_id':payload['workspace']}
+                    if op=='workspace.rename': params['label']=payload['title']
+                    else: params['close_group']=False
+                else:
+                    cwd=payload['cwd']
+                    if cwd.startswith('~/'): cwd=str(Path.home()/cwd[2:])
+                    params={'label':payload['title'] or None,'cwd':cwd or None,'focus':False,'env':{}}
+                    if op=='create': params['workspace_id']=payload['workspace']
             else:
                 self.api.member(route)
                 params={'pane_id':route['pane']}
                 if op=='rename': params['label']=payload['title'] or None
             try:
-                response=self.api.call({'rename':'pane.rename','close':'pane.close','create':'tab.create','workspace.create':'workspace.create'}[op],
+                response=self.api.call({'rename':'pane.rename','close':'pane.close','create':'tab.create','workspace.create':'workspace.create','workspace.rename':'workspace.rename','workspace.close':'workspace.close'}[op],
                                        params,time.monotonic()+4,before_send).get('result')
                 if failed(response): raise ValueError('Missing action acknowledgement')
-                if op=='close':
+                if op in ('close','workspace.close'):
                     if response.get('type')!='ok': raise ValueError('Missing close acknowledgement')
+                elif op=='workspace.rename':
+                    if (response.get('type')!='workspace_renamed' or response.get('workspace_id')!=payload['workspace']
+                            or response.get('label')!=payload['title']): raise ValueError('Invalid workspace rename acknowledgement')
                 elif op=='rename':
                     pane=response.get('pane',{})
                     if (response.get('type')!='pane_info' or not isinstance(pane,dict) or pane.get('pane_id')!=route['pane']
@@ -117,6 +125,7 @@ class SessionActions:
                     return {'applied':True,'created':ids}
                 check()
                 return {'applied':True}
-            except Exception:
+            except Exception as error:
+                if op=='workspace.close' and isinstance(error,BridgeRejected) and error.code=='workspace_group_close_required': raise
                 if submitted: raise DeliveryUncertain()
                 raise

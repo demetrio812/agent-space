@@ -16,7 +16,7 @@ import zipfile
 PROTOCOL = 'agentspace-bridge-v2'
 MAX_PACKAGE_BYTES = 512 * 1024
 MAX_RECORD_BYTES = 2 * 1024 * 1024
-MODULES = {'__main__.py', 'worker.py', 'protocol.py', 'local_api.py', 'bootstrap.py',
+MODULES = {'git_metadata.py', '__main__.py', 'worker.py', 'protocol.py', 'local_api.py', 'bootstrap.py',
            'session_actions.py', 'image_transfers.py', 'gateway.py', 'launcher.py', 'gate_rules.py', 'catalog_gate.py', 'package.py'}
 REQUIRED = {'__main__.py', 'worker.py', 'protocol.py', 'local_api.py', 'bootstrap.py', 'gate_rules.py', 'catalog_gate.py'}
 

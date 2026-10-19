@@ -1,3 +1,5 @@
+import 'git_metadata_view.dart';
+
 import 'dart:async';
 import 'dart:math' as math;
 
@@ -112,6 +114,7 @@ class _TerminalPaneState extends State<TerminalPane> {
             const SizedBox(height: 16),
             Text('Workspace: ${widget.session.workspaceLabel}'),
             Text('Project: ${widget.session.project}'),
+            GitMetadataView(metadata: widget.session.git),
             Text('Agent: ${widget.session.agent}'),
             Text(
               'Status: ${widget.session.available ? widget.session.status.label : 'Unavailable'}',
@@ -257,7 +260,7 @@ class _TerminalPaneState extends State<TerminalPane> {
                 ),
               ),
             Container(
-              height: 48,
+              height: session.git.isEmpty ? 48 : 70,
               padding: EdgeInsets.symmetric(horizontal: compact ? 8 : 18),
               color: context.panel,
               child: Row(
@@ -300,6 +303,8 @@ class _TerminalPaneState extends State<TerminalPane> {
                               fontSize: 10,
                             ),
                           ),
+                          if (!session.git.isEmpty)
+                            GitMetadataView(metadata: session.git),
                         ],
                       ),
                     ),

@@ -1,3 +1,6 @@
+import 'git_metadata_view.dart';
+import 'workspace_actions_ui.dart';
+
 import 'dart:async';
 import 'dart:math' as math;
 
@@ -813,6 +816,7 @@ class _Sidebar extends StatelessWidget {
     TabGroup? group,
   }) {
     final selected = app.layout.filter == id;
+    final workspaceTarget = app.workspaceTarget(id);
     final row = Container(
       margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
       decoration: BoxDecoration(
@@ -874,6 +878,12 @@ class _Sidebar extends StatelessWidget {
               ),
             ),
           ),
+          if (workspaceTarget != null)
+            WorkspaceActionsButton(
+              app: app,
+              origin: workspaceTarget.$1,
+              workspace: workspaceTarget.$2,
+            ),
           if (group != null) GroupActionsButton(app: app, group: group),
           if (openWindow != null)
             CompactIcon(
@@ -886,6 +896,22 @@ class _Sidebar extends StatelessWidget {
         ],
       ),
     );
+    if (workspaceTarget != null) {
+      return GestureDetector(
+        key: ValueKey('workspace-row-$id'),
+        behavior: HitTestBehavior.opaque,
+        onSecondaryTapDown: (details) => unawaited(
+          showWorkspaceContextMenu(
+            context,
+            app,
+            workspaceTarget.$1,
+            workspaceTarget.$2,
+            details.globalPosition,
+          ),
+        ),
+        child: row,
+      );
+    }
     if (group == null) return row;
     return GestureDetector(
       key: ValueKey('group-row-${group.id}'),
@@ -1248,6 +1274,11 @@ class SessionTile extends StatelessWidget {
                       ),
               ),
             ),
+            if (!session.git.isEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
+                child: GitMetadataView(metadata: session.git),
+              ),
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 10, 12, 11),
               child: Row(

@@ -139,6 +139,8 @@ class _Connection implements BridgeConnection {
       'close',
       'create',
       'workspace.create',
+      'workspace.rename',
+      'workspace.close',
     }.contains(row['op']);
     if (management) owner.managementRequests.add(row);
     if (management && owner.managementFault == 'lost') {
@@ -184,7 +186,16 @@ class _Connection implements BridgeConnection {
       final agents =
           (computer['catalog']['catalog']['result']['agents'] as List);
       final result = <String, dynamic>{'applied': true};
-      if (row['op'] == 'rename') {
+      if (row['op'] == 'workspace.rename') {
+        ((computer['catalog']['workspaces'] as List).singleWhere(
+          (w) => w['workspace_id'] == payload['workspace'],
+        ) as Map)['label'] = payload['title'];
+      } else if (row['op'] == 'workspace.close') {
+        (computer['catalog']['workspaces'] as List).removeWhere(
+          (w) => w['workspace_id'] == payload['workspace'],
+        );
+        agents.removeWhere((a) => a['workspace_id'] == payload['workspace']);
+      } else if (row['op'] == 'rename') {
         (agents.singleWhere((a) => a['terminal_id'] == route['terminal'])
                 as Map)['title'] =
             payload['title'];

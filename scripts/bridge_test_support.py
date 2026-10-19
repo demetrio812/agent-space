@@ -20,6 +20,7 @@ class FakeHerdr:
         self.input_reply = None
         self.lose_management_ack = False
         self.management_result = None
+        self.reject_workspace_group = False
         self.mutation_calls = []
         self.pane_labels = {}
         self.extra_panes = []
@@ -90,10 +91,20 @@ else:
                       'tab.list': {'tabs': []},
                       'pane.list': {'panes': [{**a, 'label': self.pane_labels.get(a['pane_id'])} for a in self.agents] + self.extra_panes},
                       'pane.layout': {'layout': {'panes':[{'pane_id':'p1','rect':{'width':90,'height':30}}]}}}.get(method, {'type':'ok'})
-            if method in ('pane.rename','pane.close','tab.create','workspace.create'):
+            if method=='workspace.close' and self.reject_workspace_group:
+                client.sendall((json.dumps({'id':row['id'],'error':{'code':'workspace_group_close_required','message':'Linked workspaces are open'}})+'\n').encode());return
+            if method in ('pane.rename','pane.close','tab.create','workspace.create','workspace.rename','workspace.close'):
                 self.mutation_calls.append(row)
                 params=row['params']
-                if method=='pane.rename':
+                if method=='workspace.rename':
+                    for workspace in self.workspaces:
+                        if workspace['workspace_id']==params['workspace_id']:
+                            workspace['label']=params['label']
+                            result={'type':'workspace_renamed','workspace_id':params['workspace_id'],'label':params['label']}
+                elif method=='workspace.close':
+                    self.workspaces=[w for w in self.workspaces if w['workspace_id']!=params['workspace_id']]
+                    self.agents=[a for a in self.agents if a['workspace_id']!=params['workspace_id']]
+                elif method=='pane.rename':
                     for agent in self.agents:
                         if agent['pane_id']==params['pane_id']:
                             self.pane_labels[agent['pane_id']]=params['label']

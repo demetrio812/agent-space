@@ -169,6 +169,7 @@ Object bridgeRejection(Map<String, dynamic> error, {required bool input}) {
     'generation_changed',
     'terminal_missing',
     'workspace_missing',
+    'workspace_group_close_required',
     'busy',
     'timeout',
     'delivery_uncertain',
@@ -186,6 +187,9 @@ Object bridgeRejection(Map<String, dynamic> error, {required bool input}) {
     'generation_changed' ||
     'terminal_missing' ||
     'workspace_missing' => SessionUnavailable(),
+    'workspace_group_close_required' => SessionUnavailable(
+      'Close this workspace’s linked worktree workspaces first. Nothing was closed.',
+    ),
     'auth_required' => ConnectionFailure(
       'This computer needs SSH access from the connected computer.',
       permanent: true,

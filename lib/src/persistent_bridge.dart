@@ -223,6 +223,8 @@ class PersistentBridge {
         'close',
         'create',
         'workspace.create',
+        'workspace.rename',
+        'workspace.close',
         'health',
       },
       BridgeLane.streams => const {

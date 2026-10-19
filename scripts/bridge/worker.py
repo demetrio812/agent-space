@@ -14,12 +14,14 @@ import time
 try:
     from .protocol import PROTOCOL, BridgeRejected, DeliveryUncertain, validate_request, read_record, write_record
     from .image_transfers import ImageTransfers
+    from .git_metadata import GitMetadata
     from .local_api import LocalApi
     from .session_actions import SessionActions, MANAGEMENT, validate_management_route, check_worker_origin
     from .gate_rules import valid_viewport, gate
 except ImportError:
     from protocol import PROTOCOL, BridgeRejected, DeliveryUncertain, validate_request, read_record, write_record
     from image_transfers import ImageTransfers
+    from git_metadata import GitMetadata
     from local_api import LocalApi
     from session_actions import SessionActions, MANAGEMENT, validate_management_route, check_worker_origin
     from gate_rules import valid_viewport, gate
@@ -58,6 +60,7 @@ class LocalWorker:
         self._management_compatible = None; self._compatible = None; self._compatibility_lock = threading.Lock()
         self._writer = threading.Thread(target=self._write_loop, daemon=True)
         self.images = None
+        self.git_metadata = GitMetadata(self.closed)
         self._writer.start()
         threading.Thread(target=self._reap_images,daemon=True).start()
 
@@ -183,7 +186,7 @@ class LocalWorker:
         if op == 'health': return {'alive':True}
         if op in ('catalog','input','send','observe','resize') and not self.compatible(): raise BridgeRejected('unsupported')
         if op == 'catalog':
-            result = self.api.catalog()
+            result = self.git_metadata.enrich(self.api.catalog())
             result.update(inputEnabled=self.config.get('allowInput',True),
                           terminalInputEnabled=self.config.get('allowInput',True),
                           terminalViewportEnabled=self.config.get('allowInput',True),

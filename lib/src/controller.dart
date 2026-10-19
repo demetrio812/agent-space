@@ -238,6 +238,23 @@ class AppController extends ChangeNotifier {
     for (final session in sessions) {
       (origins[session.workspaceLabel] ??= <String>{}).add(session.computerId);
     }
+    for (final computer in computers) {
+      for (final workspace in computer.workspaces) {
+        (origins[workspace.label] ??= <String>{}).add(
+          computer.origin.computerId,
+        );
+      }
+    }
+    for (final computer in computers) {
+      for (final workspace in computer.workspaces) {
+        result[scopedWorkspaceId(
+          computer.origin,
+          workspace.id,
+        )] = origins[workspace.label]!.length > 1
+            ? '${workspace.label} · ${computerLabel(computer.origin.computerId, origin: computer.origin)}'
+            : workspace.label;
+      }
+    }
     for (final session in sessions) {
       if (session.workspaceId.isNotEmpty) {
         final colliding = origins[session.workspaceLabel]!.length > 1;
@@ -260,6 +277,8 @@ class AppController extends ChangeNotifier {
         filter.startsWith('group:')) {
       return null;
     }
+    final target = workspaceTarget(filter);
+    if (target != null) return target.$1.computerId;
     return [...sessions, ...layout.retained.values, ...layout.favourites.values]
         .where((session) => session.workspaceFilterId == filter)
         .firstOrNull
@@ -274,6 +293,15 @@ class AppController extends ChangeNotifier {
         .where((session) => session.computerId == computerId)
         .map((session) => session.workspaceFilterId)
         .toSet();
+    for (final computer in computers.where(
+      (c) => c.origin.computerId == computerId,
+    )) {
+      workspaceIds.addAll(
+        computer.workspaces.map(
+          (w) => scopedWorkspaceId(computer.origin, w.id),
+        ),
+      );
+    }
     result.removeWhere((id, _) => !workspaceIds.contains(id));
     return result;
   }
@@ -1711,6 +1739,79 @@ class AppController extends ChangeNotifier {
         layout.filter = 'all';
         search = '';
         select(created.key.id);
+      },
+    );
+  }
+
+  (SessionOrigin, SessionWorkspace)? workspaceTarget(String filter) {
+    for (final computer in computers) {
+      for (final workspace in computer.workspaces) {
+        if (scopedWorkspaceId(computer.origin, workspace.id) == filter) {
+          return (computer.origin, workspace);
+        }
+      }
+    }
+    return null;
+  }
+
+  bool canManageWorkspace(SessionOrigin origin, SessionWorkspace workspace) =>
+      canManageComputer(origin) &&
+      computers.any(
+        (c) =>
+            sameSessionOrigin(c.origin, origin) &&
+            c.workspaces.any((w) => w.id == workspace.id),
+      );
+
+  Future<void> renameWorkspace(
+    SessionOrigin origin,
+    SessionWorkspace workspace,
+    String title,
+  ) async {
+    validateSessionAction('workspace.rename', {
+      'workspace': workspace.id,
+      'title': title,
+    });
+    if (!canManageWorkspace(origin, workspace)) throw SessionUnavailable();
+    await _sessionAction(
+      'workspace.rename',
+      origin,
+      (backend) => backend.renameWorkspace(origin, workspace, title),
+    );
+  }
+
+  Future<void> closeWorkspace(
+    SessionOrigin origin,
+    SessionWorkspace workspace,
+  ) async {
+    if (!canManageWorkspace(origin, workspace)) throw SessionUnavailable();
+    await _sessionAction(
+      'workspace.close',
+      origin,
+      (backend) => backend.closeWorkspace(origin, workspace),
+      applied: (_) {
+        final closing = sessions
+            .where(
+              (s) =>
+                  s.origin != null &&
+                  sameSessionOrigin(s.origin!, origin) &&
+                  s.workspaceId == workspace.id,
+            )
+            .toList();
+        for (final session in closing) {
+          if (layout.favourites.containsKey(session.key.id)) {
+            layout.favourites[session.key.id] = session.unavailable();
+          }
+          if (layout.retained.containsKey(session.key.id)) {
+            layout.retained[session.key.id] = session.unavailable();
+          }
+          final entry = terminals.remove(session.key.id);
+          if (entry != null) unawaited(_stopEntry(entry));
+          if (layout.selectedId == session.key.id) layout.selectedId = null;
+        }
+        sessions = sessions.where((s) => !closing.contains(s)).toList();
+        if (layout.filter == scopedWorkspaceId(origin, workspace.id)) {
+          layout.filter = 'computer:${origin.computerId}';
+        }
       },
     );
   }

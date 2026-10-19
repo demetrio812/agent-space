@@ -1,3 +1,5 @@
+import 'git_metadata.dart';
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
@@ -31,6 +33,8 @@ class DemoBackend
   final _renamed = <String, String>{}, _closedSessions = <String>{};
   final _created = <SessionInfo>[];
   int _createdCount = 0;
+  final _workspaceLabels = <String, String>{};
+  final _closedWorkspaces = <String>{};
   final _createdWorkspaces = <SessionWorkspace>[];
   static const demoOrigin = SessionOrigin(
     profile: 'demo',
@@ -48,12 +52,19 @@ class DemoBackend
       origin: demoOrigin,
       state: ComputerState.live,
       managementEnabled: true,
-      workspaces: [
-        SessionWorkspace('demo-workspace-0', 'Studio'),
-        SessionWorkspace('demo-workspace-1', 'Library'),
-        const SessionWorkspace('demo-workspace-2', 'AgentSpace'),
-        ..._createdWorkspaces,
-      ],
+      workspaces:
+          [
+                SessionWorkspace('demo-workspace-0', 'Studio'),
+                SessionWorkspace('demo-workspace-1', 'Library'),
+                const SessionWorkspace('demo-workspace-2', 'AgentSpace'),
+                ..._createdWorkspaces,
+              ]
+              .where((w) => !_closedWorkspaces.contains(w.id))
+              .map(
+                (w) =>
+                    SessionWorkspace(w.id, _workspaceLabels[w.id] ?? w.label),
+              )
+              .toList(),
     ),
   ];
   static const _names = [
@@ -93,17 +104,32 @@ class DemoBackend
                 SessionStatus.idle,
               ][i % 4],
               workspaceId: 'demo-workspace-${i ~/ 4}',
-              workspaceLabel: ['Studio', 'Library', 'AgentSpace'][i ~/ 4],
+              workspaceLabel:
+                  _workspaceLabels['demo-workspace-${i ~/ 4}'] ??
+                  ['Studio', 'Library', 'AgentSpace'][i ~/ 4],
               terminalTitle: '${_agents[i % 3]} · ${_names[i]}',
+              git: GitMetadata(
+                branch: i % 2 == 0 ? 'feature/navigation' : 'main',
+                prNumber: i % 2 == 0 ? 42 : 0,
+                prState: i % 2 == 0 ? 'OPEN' : '',
+              ),
               inputEnabled: true,
               terminalInputEnabled: true,
               terminalViewportEnabled: true,
             ),
           )
-          .where((s) => !_closedSessions.contains(s.key.terminal))
+          .where(
+            (s) =>
+                !_closedSessions.contains(s.key.terminal) &&
+                !_closedWorkspaces.contains(s.workspaceId),
+          )
           .followedBy(
             _created
-                .where((s) => !_closedSessions.contains(s.key.terminal))
+                .where(
+                  (s) =>
+                      !_closedSessions.contains(s.key.terminal) &&
+                      !_closedWorkspaces.contains(s.workspaceId),
+                )
                 .map(
                   (s) => SessionInfo(
                     key: s.key,
@@ -114,7 +140,8 @@ class DemoBackend
                     agent: s.agent,
                     status: s.status,
                     workspaceId: s.workspaceId,
-                    workspaceLabel: s.workspaceLabel,
+                    workspaceLabel:
+                        _workspaceLabels[s.workspaceId] ?? s.workspaceLabel,
                     terminalTitle: s.terminalTitle,
                     inputEnabled: true,
                     terminalInputEnabled: true,
@@ -190,6 +217,37 @@ class DemoBackend
     );
     _created.add(session);
     return session;
+  }
+
+  void _verifyWorkspace(SessionOrigin origin, SessionWorkspace workspace) {
+    if (_closed ||
+        !sameSessionOrigin(origin, demoOrigin) ||
+        !sessionComputers.single.workspaces.any((w) => w.id == workspace.id)) {
+      throw SessionUnavailable();
+    }
+  }
+
+  @override
+  Future<void> renameWorkspace(
+    SessionOrigin origin,
+    SessionWorkspace workspace,
+    String title,
+  ) async {
+    validateSessionAction('workspace.rename', {
+      'workspace': workspace.id,
+      'title': title,
+    });
+    _verifyWorkspace(origin, workspace);
+    _workspaceLabels[workspace.id] = title;
+  }
+
+  @override
+  Future<void> closeWorkspace(
+    SessionOrigin origin,
+    SessionWorkspace workspace,
+  ) async {
+    _verifyWorkspace(origin, workspace);
+    _closedWorkspaces.add(workspace.id);
   }
 
   @override

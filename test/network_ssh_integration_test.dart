@@ -145,6 +145,8 @@ void main() {
               'pane.close',
               'tab.create',
               'workspace.create',
+              'workspace.rename',
+              'workspace.close',
             }.contains(r['method']),
           )
           .toList();
@@ -377,7 +379,35 @@ void main() {
   }, skip: skip);
 
   test(
-    'workspace SSH creates only on the selected peer',
+    'SSH carries peer branch and PR metadata without crossing computers',
+    () async {
+      await control(
+        'metadata',
+        node: 'b',
+        data: {
+          'tokens': {
+            'branch': 'feature/review',
+            'pr': '#42 open',
+            'pr_url': 'https://github.com/example/project/pull/42',
+          },
+        },
+      );
+      final value = backend();
+      final rows = await value.listSessions();
+      expect(peer(rows, 'a').git.isEmpty, true);
+      expect(peer(rows, 'b').git.branch, 'feature/review');
+      expect(
+        peer(rows, 'b').git.prUrl,
+        'https://github.com/example/project/pull/42',
+      );
+      await control('metadata', node: 'b', data: {'tokens': {}});
+      expect(peer(await value.listSessions(), 'b').git.isEmpty, true);
+    },
+    skip: skip,
+  );
+
+  test(
+    'workspace SSH creates renames and closes only on the selected peer',
     () async {
       final value = backend();
       final b = peer(await value.listSessions(), 'b');
@@ -408,6 +438,38 @@ void main() {
             .label,
         'Research',
       );
+      final workspace = value.sessionComputers
+          .singleWhere((c) => c.origin.machineId == b.origin!.machineId)
+          .workspaces
+          .last;
+      await value.renameWorkspace(
+        computer.origin,
+        workspace,
+        'Renamed research',
+      );
+      await value.listSessions();
+      expect(
+        value.sessionComputers
+            .singleWhere((c) => c.origin.machineId == b.origin!.machineId)
+            .workspaces
+            .last
+            .label,
+        'Renamed research',
+      );
+      await value.closeWorkspace(computer.origin, workspace);
+      expect(
+        (await value.listSessions()).any((s) => s.key == created.key),
+        false,
+      );
+      final finalStats = await control('stats');
+      expect(mutations(finalStats, 'a'), isEmpty);
+      expect(mutations(finalStats, 'gateway'), isEmpty);
+      expect(mutations(finalStats, 'b').map((r) => r['method']), [
+        'workspace.create',
+        'workspace.rename',
+        'workspace.close',
+      ]);
+      expect(mutations(finalStats, 'b').last['params']['close_group'], false);
     },
     skip: skip,
     timeout: const Timeout(Duration(seconds: 60)),

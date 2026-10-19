@@ -66,6 +66,11 @@ class LocalApi:
                 connection.sendall(request)
                 connection.settimeout(max(.001, deadline - time.monotonic()))
                 with connection.makefile('rb') as source: response = read_record(source)
+                if (method=='workspace.close' and isinstance(response,dict) and response.get('id')==identifier
+                        and isinstance(response.get('error'),dict)
+                        and response['error'].get('code')=='workspace_group_close_required'):
+                    # Herdr explicitly guarantees that no workspace in the group closed.
+                    raise BridgeRejected('workspace_group_close_required')
                 if response is None or response.get('id') != identifier or failed(response):
                     raise ValueError('Invalid Herdr response')
                 if method.startswith('pane.send'):

@@ -9,7 +9,7 @@ ID = re.compile(r'^[1-9][0-9]{0,15}$')
 IDENTITY = re.compile(r'^[A-Za-z0-9_.:@%+/][A-Za-z0-9_.:@%+/-]{0,255}$')
 GENERATION = re.compile(r'^[0-9a-f]{64}$')
 OPS = {'transfer': {'image.begin','image.chunk','image.finish','image.cancel','health'}, 'discovery': {'catalog','machines','health'},
-       'input': {'input','send','rename','close','create','workspace.create','health'}, 'streams': {'observe','resize','scroll','click','cancel','health'}}
+       'input': {'input','send','rename','close','create','workspace.create','workspace.rename','workspace.close','health'}, 'streams': {'observe','resize','scroll','click','cancel','health'}}
 
 
 class BridgeRejected(Exception):
