@@ -1,3 +1,5 @@
+import 'dictation_shortcut.dart';
+
 import 'dart:async';
 import 'dart:convert';
 
@@ -2036,6 +2038,13 @@ class AppController extends ChangeNotifier {
     }
     rows.insert(newIndex, rows.removeAt(oldIndex));
     _saveSessionOrder(rows);
+    _scheduleSave();
+    notifyListeners();
+  }
+
+  void setDictationShortcut(DictationShortcut value) {
+    if (value.validationError != null) return;
+    snapshot.dictationShortcut = value;
     _scheduleSave();
     notifyListeners();
   }

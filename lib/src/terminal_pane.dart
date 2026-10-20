@@ -6,6 +6,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart' hide ConnectionState;
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/gestures.dart';
 import 'package:xterm/xterm.dart' hide TerminalState;
 
@@ -41,11 +42,19 @@ class _TerminalPaneState extends State<TerminalPane> {
   final terminalController = TerminalController();
   Terminal? lastTerminal;
   bool composerOpen = false;
+  bool dictationOpen = false;
 
   Future<void> dictate() async {
+    if (dictationOpen) return;
     final session = widget.session, app = widget.app;
     final generation = app.dictationGeneration;
-    final text = await showDictation(context, app, session);
+    dictationOpen = true;
+    String? text;
+    try {
+      text = await showDictation(context, app, session);
+    } finally {
+      dictationOpen = false;
+    }
     if (!mounted ||
         text == null ||
         !app.dictationTargetIsCurrent(session, generation)) {
@@ -62,6 +71,25 @@ class _TerminalPaneState extends State<TerminalPane> {
     draftFocus.requestFocus();
   }
 
+  KeyEventResult handleDictationShortcut(KeyEvent event) {
+    if (!mounted ||
+        defaultTargetPlatform != TargetPlatform.macOS ||
+        !widget.app.snapshot.dictationShortcut.matches(event) ||
+        ModalRoute.of(context)?.isCurrent != true ||
+        (Scaffold.maybeOf(context)?.isDrawerOpen ?? false) ||
+        (WidgetsBinding.instance.lifecycleState != null &&
+            WidgetsBinding.instance.lifecycleState !=
+                AppLifecycleState.resumed) ||
+        !widget.app.dictationTargetIsCurrent(
+          widget.session,
+          widget.app.dictationGeneration,
+        )) {
+      return KeyEventResult.ignored;
+    }
+    if (event is KeyDownEvent && !dictationOpen) unawaited(dictate());
+    return KeyEventResult.handled;
+  }
+
   void toggleComposer() {
     setState(() => composerOpen = !composerOpen);
     if (composerOpen) {
@@ -74,6 +102,7 @@ class _TerminalPaneState extends State<TerminalPane> {
   @override
   void initState() {
     super.initState();
+    FocusManager.instance.addEarlyKeyEventHandler(handleDictationShortcut);
     draft.text = widget.app.layout.drafts[widget.session.key.id] ?? '';
   }
 
@@ -91,6 +120,7 @@ class _TerminalPaneState extends State<TerminalPane> {
 
   @override
   void dispose() {
+    FocusManager.instance.removeEarlyKeyEventHandler(handleDictationShortcut);
     draft.dispose();
     draftFocus.dispose();
     terminalController.dispose();
@@ -374,7 +404,10 @@ class _TerminalPaneState extends State<TerminalPane> {
                   if (!widget.mobileControls || composerOpen)
                     CompactIcon(
                       Icons.mic_none,
-                      'Dictate message',
+                      defaultTargetPlatform == TargetPlatform.macOS &&
+                              app.snapshot.dictationShortcut.enabled
+                          ? 'Dictate message (${app.snapshot.dictationShortcut.label})'
+                          : 'Dictate message',
                       () => unawaited(dictate()),
                     ),
                   if (compact)

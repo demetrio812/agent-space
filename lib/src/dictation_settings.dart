@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 
 import 'controller.dart';
 import 'dictation.dart';
+import 'dictation_shortcut_settings.dart';
 
 class DictationSettings extends StatefulWidget {
   const DictationSettings({super.key, required this.app, this.keys});
@@ -98,6 +100,35 @@ class _DictationSettingsState extends State<DictationSettings> {
         'Dictation',
         style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
       ),
+      if (defaultTargetPlatform == TargetPlatform.macOS) ...[
+        SwitchListTile.adaptive(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Keyboard shortcut'),
+          subtitle: Text(widget.app.snapshot.dictationShortcut.label),
+          value: widget.app.snapshot.dictationShortcut.enabled,
+          onChanged: (enabled) => setState(
+            () => widget.app.setDictationShortcut(
+              widget.app.snapshot.dictationShortcut.copyWith(enabled: enabled),
+            ),
+          ),
+        ),
+        TextButton(
+          onPressed: () async {
+            final value = await editDictationShortcut(
+              context,
+              widget.app.snapshot.dictationShortcut,
+            );
+            if (value != null && mounted) {
+              setState(() => widget.app.setDictationShortcut(value));
+            }
+          },
+          child: const Text('Change shortcut'),
+        ),
+        const Text(
+          'Starts dictation in the selected session while AgentSpace is active. Saved on this Mac. System shortcuts may take precedence.',
+        ),
+        const SizedBox(height: 12),
+      ],
       const SizedBox(height: 10),
       DropdownButtonFormField<DictationProvider>(
         key: ValueKey('dictation-provider-${provider.name}'),

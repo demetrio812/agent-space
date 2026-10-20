@@ -67,6 +67,8 @@ macOS shortcuts: ⌘1 Favourites, ⌘0 all sessions, ⌘F search, Esc overview, 
 
 In **Settings → Dictation**, choose **OpenAI** or **ElevenLabs** and save your own API key. Each provider has a separate key stored in the device’s secure storage; add it separately on your Mac, iPhone and iPad. API usage is billed by the selected provider. OpenAI uses `gpt-live-transcribe`; ElevenLabs uses `scribe_v2_realtime`.
 
+On Mac, **⌘⇧D** starts dictation in the selected session while AgentSpace is active. Change its modifiers and key, or disable it, under **Settings → Dictation → Keyboard shortcut**. The choice is saved on that device; it does not register a system-wide hotkey. Existing app and common macOS shortcuts are protected.
+
 Open a session and tap the microphone in its toolbar or mobile key bar. Allow microphone access when prompted. Words appear as you speak. **Stop & Send** finalizes the transcript and submits it as text + Enter to that session. **Review** lets you edit it first, send it, or keep it as a Message draft. **Cancel** discards the recording without sending. Existing Message drafts are preserved when dictation is sent directly.
 
 Audio streams directly to the selected provider; AgentSpace does not save audio recordings. Recording stops when the app backgrounds or the target session changes. After five minutes it stops for review without sending automatically. Interrupted or unconfirmed transcripts are never automatically submitted or replayed. Reviewed text stays editable across app switches.

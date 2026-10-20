@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'models.dart';
+import 'dictation_shortcut.dart';
 import 'session_actions.dart';
 
 const maxLayoutBytes = 1024 * 1024;
@@ -183,6 +184,7 @@ class AppSnapshot {
   String activeSource = 'demo';
   String appearance = 'system';
   String dictationProvider = 'openai';
+  DictationShortcut dictationShortcut = const DictationShortcut();
   final layouts = <String, WorkspaceLayout>{};
   final profiles = <ConnectionProfile>[];
   final window = <String, double>{};
@@ -194,6 +196,7 @@ class AppSnapshot {
     'activeSource': activeSource,
     'appearance': appearance,
     'dictationProvider': dictationProvider,
+    'dictationShortcut': dictationShortcut.toJson(),
     'layouts': layouts.map((key, value) => MapEntry(key, value.toJson())),
     'profiles': profiles.take(16).map((p) => p.toJson()).toList(),
     'window': window,
@@ -204,6 +207,9 @@ class AppSnapshot {
       throw const FormatException('Unsupported saved layout version.');
     }
     final result = AppSnapshot();
+    result.dictationShortcut = DictationShortcut.fromJson(
+      j['dictationShortcut'],
+    );
     if (['openai', 'elevenlabs'].contains(j['dictationProvider'])) {
       result.dictationProvider = j['dictationProvider'];
     }
