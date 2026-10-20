@@ -160,6 +160,48 @@ void main() {
       expect(backend.cancels, 1);
     },
   );
+  test(
+    'dictation targets selected session and preserves existing draft',
+    () async {
+      final session = backend.sessions.first;
+      app.select(session.key.id);
+      final generation = app.dictationGeneration;
+      app.updateDraft(session.key.id, 'Unsent draft');
+      expect(
+        await app.sendDictation(session, generation, 'Dictated message'),
+        isTrue,
+      );
+      expect(backend.sends, 1);
+      expect(app.layout.drafts[session.key.id], 'Unsent draft');
+      app.select(backend.sessions.last.key.id);
+      expect(
+        await app.sendDictation(session, generation, 'Wrong target'),
+        isFalse,
+      );
+      expect(backend.sends, 1);
+      app.select(session.key.id);
+      await app.setActive(false, gracePeriod: Duration.zero);
+      expect(
+        await app.sendDictation(session, generation, 'Background'),
+        isFalse,
+      );
+      expect(backend.sends, 1);
+    },
+  );
+  test('dictation uncertain delivery is not replayed', () async {
+    final session = backend.sessions.first;
+    app.select(session.key.id);
+    backend.uncertain = true;
+    expect(
+      await app.sendDictation(session, app.dictationGeneration, 'Message'),
+      isFalse,
+    );
+    expect(
+      await app.sendDictation(session, app.dictationGeneration, 'Message'),
+      isFalse,
+    );
+    expect(backend.sends, 1);
+  });
   test('uncertain send retains draft and refuses automatic replay', () async {
     final id = backend.sessions.first.key.id;
     app.updateDraft(id, 'Please review');

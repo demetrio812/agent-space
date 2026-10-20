@@ -240,7 +240,12 @@ void main() {
             await tester.scrollUntilVisible(
               find.text('Terminal zoom'),
               150,
-              scrollable: find.byType(Scrollable).last,
+              scrollable: find
+                  .descendant(
+                    of: find.byKey(const ValueKey('settings-scroll')),
+                    matching: find.byType(Scrollable),
+                  )
+                  .first,
             );
             await Scrollable.ensureVisible(
               tester.element(find.byType(CupertinoSlider).last),
@@ -354,7 +359,16 @@ void main() {
           await tester.tap(find.byTooltip('Settings & connections'));
           await tester.pumpAndSettle();
           final selector = find.byKey(const ValueKey('appearance-mode'));
-          await tester.ensureVisible(selector);
+          await tester.scrollUntilVisible(
+            selector,
+            150,
+            scrollable: find
+                .descendant(
+                  of: find.byKey(const ValueKey('settings-scroll')),
+                  matching: find.byType(Scrollable),
+                )
+                .first,
+          );
           await tester.tap(find.text('Light').hitTestable());
           await tester.pumpAndSettle();
           expect(

@@ -182,6 +182,7 @@ bool _validFilter(String value) {
 class AppSnapshot {
   String activeSource = 'demo';
   String appearance = 'system';
+  String dictationProvider = 'openai';
   final layouts = <String, WorkspaceLayout>{};
   final profiles = <ConnectionProfile>[];
   final window = <String, double>{};
@@ -192,6 +193,7 @@ class AppSnapshot {
     'version': 1,
     'activeSource': activeSource,
     'appearance': appearance,
+    'dictationProvider': dictationProvider,
     'layouts': layouts.map((key, value) => MapEntry(key, value.toJson())),
     'profiles': profiles.take(16).map((p) => p.toJson()).toList(),
     'window': window,
@@ -202,6 +204,9 @@ class AppSnapshot {
       throw const FormatException('Unsupported saved layout version.');
     }
     final result = AppSnapshot();
+    if (['openai', 'elevenlabs'].contains(j['dictationProvider'])) {
+      result.dictationProvider = j['dictationProvider'];
+    }
     if (['system', 'light', 'dark'].contains(j['appearance'])) {
       result.appearance = j['appearance'];
     }

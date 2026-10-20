@@ -1,3 +1,4 @@
+import 'dictation_dialog.dart';
 import 'git_metadata_view.dart';
 
 import 'dart:async';
@@ -40,6 +41,26 @@ class _TerminalPaneState extends State<TerminalPane> {
   final terminalController = TerminalController();
   Terminal? lastTerminal;
   bool composerOpen = false;
+
+  Future<void> dictate() async {
+    final session = widget.session, app = widget.app;
+    final generation = app.dictationGeneration;
+    final text = await showDictation(context, app, session);
+    if (!mounted ||
+        text == null ||
+        !app.dictationTargetIsCurrent(session, generation)) {
+      return;
+    }
+    final existing = app.layout.drafts[session.key.id] ?? '';
+    final combined = existing.isEmpty ? text : '$existing\n$text';
+    app.updateDraft(session.key.id, combined);
+    setState(() {
+      composerOpen = true;
+      draft.text = combined;
+      draft.selection = TextSelection.collapsed(offset: combined.length);
+    });
+    draftFocus.requestFocus();
+  }
 
   void toggleComposer() {
     setState(() => composerOpen = !composerOpen);
@@ -350,6 +371,12 @@ class _TerminalPaneState extends State<TerminalPane> {
                       () => unawaited(app.reconnectTerminal(session.key.id)),
                     ),
                   ],
+                  if (!widget.mobileControls || composerOpen)
+                    CompactIcon(
+                      Icons.mic_none,
+                      'Dictate message',
+                      () => unawaited(dictate()),
+                    ),
                   if (compact)
                     CompactIcon(
                       Icons.chat_bubble_outline,
@@ -499,6 +526,7 @@ class _TerminalPaneState extends State<TerminalPane> {
                         sessionId: session.key.id,
                         child: TerminalSurface(
                           autofocus: true,
+                          onDictate: () => unawaited(dictate()),
                           showMobileControls:
                               widget.mobileControls && !composerOpen,
                           mobileStatus: MobileTerminalStatusMenu(
@@ -687,7 +715,7 @@ class _TerminalPaneState extends State<TerminalPane> {
                               hintText: session.inputEnabled
                                   ? 'Message ${session.agent}…'
                                   : 'Input disabled for this connection',
-                              helperText: compact ? null : 'Send submits text + Enter. ⌘ Enter also sends. Use your system keyboard for dictation.',
+                              helperText: compact ? null : 'Send submits text + Enter. ⌘ Enter also sends.',
                               helperStyle: const TextStyle(fontSize: 10),
                               contentPadding: const EdgeInsets.symmetric(
                                 horizontal: 12,
@@ -786,6 +814,7 @@ class TerminalSurface extends StatefulWidget {
     this.autofocus = false,
     this.showMobileControls = false,
     this.mobileStatus,
+    this.onDictate,
   });
   final Terminal terminal;
   final TerminalController controller;
@@ -798,6 +827,7 @@ class TerminalSurface extends StatefulWidget {
   final bool autofocus;
   final bool showMobileControls;
   final Widget? mobileStatus;
+  final VoidCallback? onDictate;
   final void Function(TerminalInput)? sendInput;
   final VoidCallback? sendDraft;
   final bool preserveFocusWhilePaused;
@@ -1260,6 +1290,7 @@ class _TerminalSurfaceState extends State<TerminalSurface> {
           child: Builder(
             builder: (keyboardContext) => MobileTerminalKeyBar(
               statusMenu: widget.mobileStatus,
+              onDictate: widget.onDictate,
               enabled: widget.sendInput != null,
               control: _controlPressed,
               arrows: _arrowsOpen,

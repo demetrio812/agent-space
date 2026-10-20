@@ -16,8 +16,10 @@ class MobileTerminalKeyBar extends StatelessWidget {
     required this.onPaste,
     required this.onKey,
     this.statusMenu,
+    this.onDictate,
   });
   final Widget? statusMenu;
+  final VoidCallback? onDictate;
   final bool enabled, control, arrows, keyboardVisible;
   final VoidCallback onControl, onArrows, onKeyboard, onPaste;
   final ValueChanged<String> onKey;
@@ -61,6 +63,12 @@ class MobileTerminalKeyBar extends StatelessWidget {
                 icon: Icons.content_paste,
                 onPressed: enabled ? onPaste : null,
               ),
+              if (onDictate != null)
+                _KeyButton(
+                  'Dictate message',
+                  icon: Icons.mic_none,
+                  onPressed: enabled ? onDictate : null,
+                ),
               _KeyButton(
                 keyboardVisible ? 'Hide keyboard' : 'Show keyboard',
                 icon: keyboardVisible

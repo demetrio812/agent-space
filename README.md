@@ -63,6 +63,14 @@ On Android, build and install the APK, then add an SSH connection. Ordinary pass
 
 macOS shortcuts: ⌘1 Favourites, ⌘0 all sessions, ⌘F search, Esc overview, ⌘R reconnect, ⌘Enter send draft. Ctrl+F and Ctrl+Enter send to the focused terminal; from the message box, Ctrl+Enter sends its draft. ⌘Enter retains the draft shortcut. Escape goes to a focused terminal and returns to the overview outside it. On non-Mac keyboards, Ctrl+Shift+C/V copy and paste.
 
+## Dictation
+
+In **Settings → Dictation**, choose **OpenAI** or **ElevenLabs** and save your own API key. Each provider has a separate key stored in the device’s secure storage; add it separately on your Mac, iPhone and iPad. API usage is billed by the selected provider. OpenAI uses `gpt-live-transcribe`; ElevenLabs uses `scribe_v2_realtime`.
+
+Open a session and tap the microphone in its toolbar or mobile key bar. Allow microphone access when prompted. Words appear as you speak. **Stop & Send** finalizes the transcript and submits it as text + Enter to that session. **Review** lets you edit it first, send it, or keep it as a Message draft. **Cancel** discards the recording without sending. Existing Message drafts are preserved when dictation is sent directly.
+
+Audio streams directly to the selected provider; AgentSpace does not save audio recordings. Recording stops when the app backgrounds or the target session changes. After five minutes it stops for review without sending automatically. Interrupted or unconfirmed transcripts are never automatically submitted or replayed. Reviewed text stays editable across app switches.
+
 ## Saved computers and persistent connections
 
 Ordinary SSH uploads a small versioned helper once to each participating account, then reuses separate workers for discovery, typing, previews and image transfers. The image worker starts only when needed. The gateway reaches saved computers using its existing OpenSSH setup; their credentials stay there. Peers need working Python 3.9 or newer and a compatible running Herdr. Ordinary SSH probes the interpreter on PATH, then existing account-local, Homebrew, standard /usr/local and MacPorts locations; a broken Apple Python launcher does not hide a working installation. A peer that needs setup or SSH access stays visible without disconnecting other sessions. Discovery is one hop; disabled machines are shown but not contacted. See [bridge behavior and protocol](docs/bridge-protocol.md) for cache paths, routing, restrictions and verification.

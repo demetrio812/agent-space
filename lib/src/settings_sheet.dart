@@ -1,3 +1,5 @@
+import 'dictation_settings.dart';
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -75,7 +77,7 @@ class _SettingsState extends State<_Settings> {
             children: [
               const Expanded(
                 child: Text(
-                  'Connection & display',
+                  'Settings',
                   style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
                 ),
               ),
@@ -90,6 +92,7 @@ class _SettingsState extends State<_Settings> {
         const Divider(height: 1),
         Expanded(
           child: ListView(
+            key: const ValueKey('settings-scroll'),
             padding: const EdgeInsets.all(22),
             children: [
               const Text(
@@ -167,6 +170,8 @@ class _SettingsState extends State<_Settings> {
                   ),
                 ),
               const Divider(height: 34),
+              DictationSettings(app: widget.app),
+              const Divider(height: 34),
               const Text(
                 'Display',
                 style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
@@ -227,7 +232,7 @@ class _SettingsState extends State<_Settings> {
               ),
               const Divider(height: 34),
               const Text(
-                'Keyboard & dictation',
+                'Keyboard',
                 style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
               ),
               const SizedBox(height: 10),
@@ -237,7 +242,7 @@ class _SettingsState extends State<_Settings> {
               ),
               const SizedBox(height: 10),
               Text(
-                'Click or tap the terminal to type directly. Arrows, Enter, Tab and control keys go to the focused session. The message box stays separate; use your system keyboard’s microphone or dictation when available, then review and Send.',
+                'Click or tap the terminal to type directly. Arrows, Enter, Tab and control keys go to the focused session. The message box stays separate. Tap the session microphone to dictate with your selected provider, then review or Stop & Send.',
                 style: TextStyle(height: 1.5, color: context.mutedInk),
               ),
               const Divider(height: 34),

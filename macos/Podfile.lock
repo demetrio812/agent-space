@@ -7,6 +7,8 @@ PODS:
     - Flutter
     - FlutterMacOS
   - FlutterMacOS (1.0.0)
+  - record_macos (2.0.0):
+    - FlutterMacOS
   - url_launcher_macos (0.0.1):
     - FlutterMacOS
 
@@ -15,6 +17,7 @@ DEPENDENCIES:
   - desktop_multi_window (from `Flutter/ephemeral/.symlinks/plugins/desktop_multi_window/macos`)
   - flutter_secure_storage_darwin (from `Flutter/ephemeral/.symlinks/plugins/flutter_secure_storage_darwin/darwin`)
   - FlutterMacOS (from `Flutter/ephemeral`)
+  - record_macos (from `Flutter/ephemeral/.symlinks/plugins/record_macos/macos`)
   - url_launcher_macos (from `Flutter/ephemeral/.symlinks/plugins/url_launcher_macos/macos`)
 
 EXTERNAL SOURCES:
@@ -26,6 +29,8 @@ EXTERNAL SOURCES:
     :path: Flutter/ephemeral/.symlinks/plugins/flutter_secure_storage_darwin/darwin
   FlutterMacOS:
     :path: Flutter/ephemeral
+  record_macos:
+    :path: Flutter/ephemeral/.symlinks/plugins/record_macos/macos
   url_launcher_macos:
     :path: Flutter/ephemeral/.symlinks/plugins/url_launcher_macos/macos
 
@@ -34,6 +39,7 @@ SPEC CHECKSUMS:
   desktop_multi_window: d3d11c0c355f438e201de7c57569f95826ff97ba
   flutter_secure_storage_darwin: 79a377dfb00a246ccab2c64fe79d4d78c89e0fbc
   FlutterMacOS: c232990155153907050900a2e175c7773903ba4e
+  record_macos: 25091280c4e09c8ab21428dde5fd342e065508fd
   url_launcher_macos: 175a54c831f4375a6cf895875f716ee5af3888ce
 
 PODFILE CHECKSUM: 1e95c36afbfd1cb6423ceca4de7a8e1b256fb6ac

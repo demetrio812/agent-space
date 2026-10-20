@@ -1093,24 +1093,55 @@ class AppController extends ChangeNotifier {
     _scheduleSave();
   }
 
-  Future<void> sendDraft(String id) async {
+  int get dictationGeneration => _generation;
+
+  bool dictationTargetIsCurrent(SessionInfo target, int generation) {
+    final current = sessionById(target.key.id);
+    return !_disposed &&
+        _active &&
+        generation == _generation &&
+        layout.selectedId == target.key.id &&
+        current?.available == true &&
+        current?.paneId == target.paneId &&
+        current?.origin?.targetHash == target.origin?.targetHash &&
+        current?.origin?.generation == target.origin?.generation;
+  }
+
+  Future<bool> sendDictation(SessionInfo target, int generation, String text) =>
+      sendDraft(
+        target.key.id,
+        message: text,
+        expectedSession: target,
+        expectedGeneration: generation,
+      );
+
+  Future<bool> sendDraft(
+    String id, {
+    String? message,
+    SessionInfo? expectedSession,
+    int? expectedGeneration,
+  }) async {
+    if (expectedSession != null &&
+        !dictationTargetIsCurrent(expectedSession, expectedGeneration!)) {
+      return false;
+    }
     final state = sendStates.putIfAbsent(id, SendState.new);
     if (terminalInputPending(id) ||
         state.sending ||
         state.uncertain ||
         layout.uncertainDeliveries.contains(id) ||
         _disposed) {
-      return;
+      return false;
     }
     final session = sessionById(id);
     final backend = _backend;
     final ownerLayout = layout;
-    final text = ownerLayout.drafts[id] ?? '';
+    final text = message ?? ownerLayout.drafts[id] ?? '';
     final invalid = validateInput(text);
     if (invalid != null) {
       state.message = invalid;
       notifyListeners();
-      return;
+      return false;
     }
     if (session == null ||
         !session.available ||
@@ -1121,13 +1152,13 @@ class AppController extends ChangeNotifier {
         terminals[id]?.state == TerminalState.closed) {
       state.message = 'Input is unavailable for this session. Check the connection and pairing.';
       notifyListeners();
-      return;
+      return false;
     }
     if (!_deliveryMarkerFits(ownerLayout, id)) {
       state.message =
           'Check previous unconfirmed deliveries before sending more input.';
       notifyListeners();
-      return;
+      return false;
     }
     state.sending = true;
     _composedDispatches[id] = state;
@@ -1139,13 +1170,22 @@ class AppController extends ChangeNotifier {
       // An interrupted app must require a user check before another send.
       ownerLayout.uncertainDeliveries.add(id);
       await store.save(snapshot);
+      if (expectedSession != null &&
+          !dictationTargetIsCurrent(expectedSession, expectedGeneration!)) {
+        ownerLayout.uncertainDeliveries.remove(id);
+        state.message = 'The selected session changed. Nothing was sent.';
+        return false;
+      }
       submitted = true;
       await backend.sendText(session, text);
       ownerLayout.uncertainDeliveries.remove(id);
-      if (ownerLayout.drafts[id] == text) ownerLayout.drafts.remove(id);
+      if (message == null && ownerLayout.drafts[id] == text) {
+        ownerLayout.drafts.remove(id);
+      }
       state.message = session.key.backend == 'demo'
           ? 'Sent to the demo session.'
           : 'Text + Enter sent.';
+      return true;
     } catch (error) {
       state.uncertain =
           error is DeliveryUncertain ||
@@ -1160,6 +1200,7 @@ class AppController extends ChangeNotifier {
           : error is ArgumentError
           ? error.message?.toString()
           : _message(error);
+      return false;
     } finally {
       state.sending = false;
       if (identical(_composedDispatches[id], state)) {
@@ -1995,6 +2036,13 @@ class AppController extends ChangeNotifier {
     }
     rows.insert(newIndex, rows.removeAt(oldIndex));
     _saveSessionOrder(rows);
+    _scheduleSave();
+    notifyListeners();
+  }
+
+  void setDictationProvider(String value) {
+    if (!['openai', 'elevenlabs'].contains(value)) return;
+    snapshot.dictationProvider = value;
     _scheduleSave();
     notifyListeners();
   }
