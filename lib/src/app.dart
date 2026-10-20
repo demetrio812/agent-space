@@ -134,13 +134,13 @@ class _WorkspaceShellState extends State<_WorkspaceShell>
 
   String get filterTitle => app.filterLabel;
   Future<void> newGroup() async {
-    final name = TextEditingController();
+    var name = '';
     final value = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('New group'),
         content: TextField(
-          controller: name,
+          onChanged: (value) => name = value,
           autofocus: true,
           maxLength: 80,
           decoration: const InputDecoration(labelText: 'Group name'),
@@ -152,13 +152,12 @@ class _WorkspaceShellState extends State<_WorkspaceShell>
             child: const Text('Cancel'),
           ),
           FilledButton(
-            onPressed: () => Navigator.pop(context, name.text),
+            onPressed: () => Navigator.pop(context, name),
             child: const Text('Create group'),
           ),
         ],
       ),
     );
-    name.dispose();
     if (value == null || value.trim().isEmpty) return;
     final group = app.createGroup(value, []);
     filter('group:${group.id}');
@@ -760,52 +759,75 @@ class _Sidebar extends StatelessWidget {
           padding: const EdgeInsets.all(12),
           child: Column(
             children: [
-              TextButton.icon(
-                onPressed: () {
-                  onClose?.call();
-                  newSession();
-                },
-                icon: const Icon(Icons.add_box_outlined, size: 17),
-                label: const Text('New session'),
-                style: TextButton.styleFrom(
-                  foregroundColor: const Color(0xffbdcada),
-                  alignment: Alignment.centerLeft,
-                  minimumSize: const Size.fromHeight(38),
-                ),
-              ),
-              TextButton.icon(
-                onPressed: () {
-                  onClose?.call();
-                  newWorkspace();
-                },
-                icon: const Icon(Icons.create_new_folder_outlined, size: 17),
-                label: const Text('New workspace'),
-                style: TextButton.styleFrom(
-                  foregroundColor: const Color(0xffbdcada),
-                  alignment: Alignment.centerLeft,
-                  minimumSize: const Size.fromHeight(38),
-                ),
-              ),
-              TextButton.icon(
-                onPressed: newGroup,
-                icon: const Icon(Icons.add, size: 17),
-                label: const Text('New group'),
-                style: TextButton.styleFrom(
-                  foregroundColor: const Color(0xffbdcada),
-                  alignment: Alignment.centerLeft,
-                  minimumSize: const Size.fromHeight(38),
-                ),
-              ),
               const Divider(color: Color(0xff344251)),
-              TextButton.icon(
-                onPressed: settings,
-                icon: const Icon(Icons.settings_outlined, size: 17),
-                label: const Text('Settings'),
-                style: TextButton.styleFrom(
-                  foregroundColor: const Color(0xffbdcada),
-                  alignment: Alignment.centerLeft,
-                  minimumSize: const Size.fromHeight(38),
-                ),
+              Row(
+                children: [
+                  Expanded(
+                    child: PopupMenuButton<String>(
+                      key: const ValueKey('sidebar-new'),
+                      tooltip: 'New',
+                      onSelected: (action) {
+                        onClose?.call();
+                        switch (action) {
+                          case 'session':
+                            newSession();
+                          case 'workspace':
+                            newWorkspace();
+                          case 'group':
+                            newGroup();
+                        }
+                      },
+                      itemBuilder: (_) => const [
+                        PopupMenuItem(
+                          value: 'session',
+                          child: Text('New session'),
+                        ),
+                        PopupMenuItem(
+                          value: 'workspace',
+                          child: Text('New workspace'),
+                        ),
+                        PopupMenuItem(value: 'group', child: Text('New group')),
+                      ],
+                      child: const SizedBox(
+                        height: 48,
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 10),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.add,
+                                size: 19,
+                                color: Color(0xffbdcada),
+                              ),
+                              SizedBox(width: 8),
+                              Text(
+                                'New',
+                                style: TextStyle(color: Color(0xffbdcada)),
+                              ),
+                              SizedBox(width: 6),
+                              Icon(
+                                Icons.expand_more,
+                                size: 16,
+                                color: Color(0xff8296ab),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    key: const ValueKey('sidebar-settings'),
+                    tooltip: 'Settings',
+                    onPressed: settings,
+                    icon: const Icon(Icons.settings_outlined, size: 19),
+                    color: const Color(0xffbdcada),
+                    constraints: const BoxConstraints(
+                      minWidth: 48,
+                      minHeight: 48,
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
