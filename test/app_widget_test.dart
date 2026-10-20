@@ -70,8 +70,12 @@ void main() {
           findsOneWidget,
         );
         expect(tester.takeException(), isNull);
+        final library = app.sessions.firstWhere(
+          (s) => s.workspaceLabel == 'Library',
+        );
+        final computer = find.byKey(ValueKey('computer-${library.computerId}'));
         await tester.scrollUntilVisible(
-          find.text('Library'),
+          computer,
           100,
           scrollable: find
               .descendant(
@@ -80,9 +84,25 @@ void main() {
               )
               .first,
         );
-        await tester.ensureVisible(find.text('Library').last);
         await tester.pumpAndSettle();
-        await tester.tap(find.text('Library').last);
+        await tester.tap(computer);
+        await tester.pumpAndSettle();
+        final workspace = find.byKey(
+          ValueKey('workspace-${library.workspaceFilterId}'),
+        );
+        await tester.scrollUntilVisible(
+          workspace,
+          100,
+          scrollable: find
+              .descendant(
+                of: find.byType(Drawer),
+                matching: find.byType(Scrollable),
+              )
+              .first,
+        );
+        await tester.ensureVisible(workspace);
+        await tester.pumpAndSettle();
+        await tester.tap(workspace);
         await tester.pumpAndSettle();
         expect(app.visibleSessions.length, 4);
         expect(

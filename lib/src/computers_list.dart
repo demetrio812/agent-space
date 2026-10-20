@@ -4,9 +4,15 @@ import 'controller.dart';
 import 'network_models.dart';
 
 class ComputersList extends StatelessWidget {
-  const ComputersList({super.key, required this.app, this.onSelected});
+  const ComputersList({
+    super.key,
+    required this.app,
+    required this.onSelect,
+    required this.workspaceBuilder,
+  });
   final AppController app;
-  final VoidCallback? onSelected;
+  final ValueChanged<String> onSelect;
+  final Widget Function(BuildContext, String, String) workspaceBuilder;
   @override
   Widget build(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
@@ -18,7 +24,16 @@ class ComputersList extends StatelessWidget {
           style: TextStyle(color: Color(0xff98a8b9), fontSize: 12),
         ),
       ),
-      for (final computer in app.computers) _row(context, computer),
+      for (final computer in app.computers) ...[
+        _row(context, computer),
+        if (app.selectedComputerId == computer.origin.computerId &&
+            app.computerWorkspacesExpanded)
+          for (final workspace in app.sidebarWorkspaces.entries)
+            Padding(
+              padding: const EdgeInsets.only(left: 18),
+              child: workspaceBuilder(context, workspace.key, workspace.value),
+            ),
+      ],
     ],
   );
   Widget _row(BuildContext context, ComputerInfo computer) {
@@ -44,14 +59,30 @@ class ComputersList extends StatelessWidget {
           key: ValueKey('computer-$id'),
           borderRadius: BorderRadius.circular(6),
           onTap: () {
-            app.setFilter('computer:$id');
-            onSelected?.call();
+            if (selected) {
+              app.toggleComputerWorkspaces();
+            } else {
+              onSelect('computer:$id');
+            }
           },
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                Tooltip(
+                  message: selected && app.computerWorkspacesExpanded
+                      ? 'Collapse workspaces'
+                      : 'Expand workspaces',
+                  child: Icon(
+                    selected && app.computerWorkspacesExpanded
+                        ? Icons.expand_more
+                        : Icons.chevron_right,
+                    size: 16,
+                    color: const Color(0xff97a9bc),
+                  ),
+                ),
+                const SizedBox(width: 4),
                 Padding(
                   padding: const EdgeInsets.only(top: 2),
                   child: Icon(

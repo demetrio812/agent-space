@@ -285,6 +285,19 @@ class AppController extends ChangeNotifier {
         ?.computerId;
   }
 
+  String? _collapsedComputerId;
+
+  bool get computerWorkspacesExpanded =>
+      selectedComputerId != null && selectedComputerId != _collapsedComputerId;
+
+  /// Disclosure changes must not close the current terminal or reset its filter.
+  void toggleComputerWorkspaces() {
+    final id = selectedComputerId;
+    if (id == null) return;
+    _collapsedComputerId = _collapsedComputerId == id ? null : id;
+    notifyListeners();
+  }
+
   Map<String, String> get sidebarWorkspaces {
     final computerId = selectedComputerId;
     final result = workspaces;
@@ -650,6 +663,7 @@ class AppController extends ChangeNotifier {
 
   bool isFavourite(String id) => layout.favourites.containsKey(id);
   void setFilter(String filter) {
+    if (layout.filter != filter) _collapsedComputerId = null;
     _cancelTerminalInput();
     layout.filter = filter;
     layout.selectedId = null;

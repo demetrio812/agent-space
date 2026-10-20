@@ -59,14 +59,16 @@ void main() {
       await tester.tap(find.byTooltip('Sort sessions'));
       await tester.pumpAndSettle();
       expect(find.text('Recently opened'), findsOneWidget);
-      await tester.tap(find.text('Name').last);
+      await tester.tap(
+        find.widgetWithText(CheckedPopupMenuItem<SessionSort>, 'Name'),
+      );
       await tester.pumpAndSettle();
       expect(app.layout.gridSort, SessionSort.name);
       expect(tester.takeException(), isNull);
     });
   }
   for (final size in [const Size(390, 844), const Size(1366, 1024)]) {
-    testWidgets('sidebar scopes workspaces and All restores them at $size', (
+    testWidgets('sidebar expands only the selected computer at $size', (
       tester,
     ) async {
       await tester.binding.setSurfaceSize(size);
@@ -90,9 +92,17 @@ void main() {
         tester.getTopLeft(all).dy,
         lessThan(tester.getTopLeft(find.text('Computers')).dy),
       );
-      await tester.tap(find.byKey(ValueKey('computer-${peer.computerId}')));
+      expect(
+        find.byKey(ValueKey('workspace-${other.workspaceFilterId}')),
+        findsNothing,
+      );
+      final computer = find.byKey(ValueKey('computer-${peer.computerId}'));
+      await tester.tap(computer);
       await tester.pumpAndSettle();
-      await openSidebar();
+      if (size.width < 850) {
+        expect(find.byTooltip('Close sidebar'), findsOneWidget);
+      }
+
       final workspace = find.byKey(
         ValueKey('workspace-${peer.workspaceFilterId}'),
       );
@@ -101,6 +111,17 @@ void main() {
         find.byKey(ValueKey('workspace-${other.workspaceFilterId}')),
         findsNothing,
       );
+      expect(
+        tester.getTopLeft(workspace).dy,
+        greaterThan(tester.getBottomLeft(computer).dy),
+      );
+      await tester.tap(computer);
+      await tester.pumpAndSettle();
+      expect(workspace, findsNothing);
+      expect(app.selectedComputerId, peer.computerId);
+      await tester.tap(computer);
+      await tester.pumpAndSettle();
+      expect(workspace, findsOneWidget);
       await tester.tap(workspace);
       await tester.pumpAndSettle();
       await openSidebar();
@@ -108,6 +129,26 @@ void main() {
       expect(
         find.byKey(ValueKey('workspace-${other.workspaceFilterId}')),
         findsNothing,
+      );
+      app.select(peer.key.id);
+      await tester.pumpAndSettle();
+      await tester.tap(computer);
+      await tester.pumpAndSettle();
+      expect(workspace, findsNothing);
+      expect(app.layout.filter, peer.workspaceFilterId);
+      expect(app.selectedSession?.key, peer.key);
+      final otherComputer = find.byKey(
+        ValueKey('computer-${other.computerId}'),
+      );
+      await tester.ensureVisible(otherComputer);
+      await tester.tap(otherComputer);
+      await tester.pumpAndSettle();
+      expect(app.selectedComputerId, other.computerId);
+      expect(app.selectedSession, isNull);
+      expect(workspace, findsNothing);
+      expect(
+        find.byKey(ValueKey('workspace-${other.workspaceFilterId}')),
+        findsOneWidget,
       );
       await tester.ensureVisible(all);
       await tester.tap(all);
@@ -117,8 +158,26 @@ void main() {
       expect(app.visibleSessions.length, 3);
       expect(
         find.byKey(ValueKey('workspace-${other.workspaceFilterId}')),
+        findsNothing,
+      );
+      if (size.width < 850) {
+        await tester.tap(find.byTooltip('Close sidebar'));
+        await tester.pumpAndSettle();
+      }
+      final overviewWorkspace = find.byKey(
+        ValueKey('overview-workspace-${other.workspaceFilterId}'),
+      );
+      await tester.ensureVisible(overviewWorkspace);
+      await tester.tap(overviewWorkspace);
+      await tester.pumpAndSettle();
+      expect(app.layout.filter, other.workspaceFilterId);
+      await openSidebar();
+      expect(
+        find.byKey(ValueKey('workspace-${other.workspaceFilterId}')),
         findsOneWidget,
       );
+      expect(workspace, findsNothing);
+      await tester.runAsync(app.flush);
       expect(tester.takeException(), isNull);
     });
   }
@@ -167,7 +226,11 @@ void main() {
       await tester.pumpAndSettle();
       expect(app.layout.filter, 'computer:${peer.computerId}');
       expect(app.visibleSessions.single.key, peer.key);
-      expect(find.byTooltip('Close sidebar'), findsNothing);
+      if (picker.evaluate().isNotEmpty) {
+        expect(find.byTooltip('Close sidebar'), findsOneWidget);
+        await tester.tap(find.byTooltip('Close sidebar'));
+        await tester.pumpAndSettle();
+      }
       expect(tester.takeException(), isNull);
       if (size.width < 700) {
         await tester.tap(find.byTooltip('Find a session'));

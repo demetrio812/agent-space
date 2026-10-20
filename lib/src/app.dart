@@ -276,6 +276,7 @@ class _WorkspaceShellState extends State<_WorkspaceShell>
                           app: app,
                           width: double.infinity,
                           onClose: closeSidebar,
+                          selectComputer: filter,
                           filter: (value) {
                             closeSidebar();
                             filter(value);
@@ -313,6 +314,7 @@ class _WorkspaceShellState extends State<_WorkspaceShell>
                         if (sidebar)
                           _Sidebar(
                             app: app,
+                            selectComputer: filter,
                             filter: filter,
                             newGroup: newGroup,
                             newSession: () => showCreateSession(context, app),
@@ -540,10 +542,25 @@ class _WorkspaceShellState extends State<_WorkspaceShell>
                               ),
                               Expanded(
                                 child: app.selectedSession == null
-                                    ? _SessionGrid(
-                                        app: app,
-                                        openWindow: widget.openWindow,
-                                        newGroup: newGroup,
+                                    ? Column(
+                                        children: [
+                                          if ((app.layout.filter == 'all' ||
+                                                  app.layout.filter.startsWith(
+                                                    'computer:',
+                                                  )) &&
+                                              app.sidebarWorkspaces.isNotEmpty)
+                                            _WorkspaceShortcuts(
+                                              app: app,
+                                              onSelect: filter,
+                                            ),
+                                          Expanded(
+                                            child: _SessionGrid(
+                                              app: app,
+                                              openWindow: widget.openWindow,
+                                              newGroup: newGroup,
+                                            ),
+                                          ),
+                                        ],
                                       )
                                     : TerminalPane(
                                         app: app,
@@ -606,6 +623,7 @@ class _Sidebar extends StatelessWidget {
   const _Sidebar({
     required this.app,
     required this.filter,
+    required this.selectComputer,
     required this.newGroup,
     required this.newSession,
     required this.newWorkspace,
@@ -617,7 +635,7 @@ class _Sidebar extends StatelessWidget {
   final double width;
   final VoidCallback? onClose;
   final AppController app;
-  final void Function(String) filter;
+  final void Function(String) filter, selectComputer;
   final VoidCallback newGroup, newSession, newWorkspace, settings;
   final OpenDesktopWindow? openWindow;
   @override
@@ -697,29 +715,19 @@ class _Sidebar extends StatelessWidget {
                   app.computers.length,
                   key: const ValueKey('nav-all-computers'),
                 ),
-                ComputersList(app: app, onSelected: onClose),
+                ComputersList(
+                  app: app,
+                  onSelect: selectComputer,
+                  workspaceBuilder: (context, id, label) => _row(
+                    context,
+                    id,
+                    label,
+                    Icons.folder_outlined,
+                    app.sessions.where((s) => s.workspaceFilterId == id).length,
+                    key: ValueKey('workspace-$id'),
+                  ),
+                ),
               ],
-              const SizedBox(height: 22),
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 20),
-                child: Text(
-                  'Workspaces',
-                  style: TextStyle(color: Color(0xff98a8b9), fontSize: 12),
-                ),
-              ),
-              const SizedBox(height: 9),
-              ...app.sidebarWorkspaces.entries.map(
-                (e) => _row(
-                  context,
-                  e.key,
-                  e.value,
-                  Icons.folder_outlined,
-                  app.sessions
-                      .where((s) => s.workspaceFilterId == e.key)
-                      .length,
-                  key: ValueKey('workspace-${e.key}'),
-                ),
-              ),
               if (app.layout.groups.isNotEmpty)
                 const Padding(
                   padding: EdgeInsets.fromLTRB(20, 24, 20, 10),
@@ -922,6 +930,40 @@ class _Sidebar extends StatelessWidget {
       child: row,
     );
   }
+}
+
+/// All-computer workspace navigation belongs in the overview, keeping the
+/// sidebar's computer picker short even with many workspaces.
+class _WorkspaceShortcuts extends StatelessWidget {
+  const _WorkspaceShortcuts({required this.app, required this.onSelect});
+  final AppController app;
+  final ValueChanged<String> onSelect;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    height: 56,
+    child: ListView(
+      key: const ValueKey('overview-workspaces'),
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      children: [
+        for (final workspace in app.sidebarWorkspaces.entries)
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: ActionChip(
+              key: ValueKey('overview-workspace-${workspace.key}'),
+              avatar: const Icon(Icons.folder_outlined, size: 16),
+              tooltip: workspace.value,
+              label: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 220),
+                child: Text(workspace.value, overflow: TextOverflow.ellipsis),
+              ),
+              onPressed: () => onSelect(workspace.key),
+            ),
+          ),
+      ],
+    ),
+  );
 }
 
 class _SessionGrid extends StatefulWidget {
