@@ -10,6 +10,8 @@ Choose **Recent** in the sidebar to return to sessions you have opened, newest f
 
 Scroll the open terminal with two fingers on a trackpad, a mouse wheel or a vertical touch gesture. Supported attached connections forward scrolling to Herdr, including its application-specific scroll handling; gestures do not become typed arrows or commands. Wheel events are preserved when batched, including Claude’s mouse reporting. Click terminal controls such as **Jump to bottom** directly.
 
+Drag the sidebar’s right edge to make room for long names. Its width is saved on your device; double-click the edge to restore the default. Narrow windows temporarily limit its width without forgetting your preference.
+
 Select a computer in the sidebar to expand its workspaces directly underneath. Click the selected computer again to collapse or expand the list without leaving your current session. Selecting another computer expands only that computer. **All** keeps the sidebar compact and shows workspace shortcuts above the session grid; selecting a workspace on a phone closes the sidebar. Workspace **Rename** and **Close workspace…** remain available from the nested row’s menu.
 
 Use **Sort sessions** in the grid toolbar to choose Custom order, Name, Recently opened, Status, Computer or Workspace. The choice is saved for each connection. Status puts Needs input first, then Working, Done, Idle and Unknown; Recently opened tracks sessions opened in AgentSpace. In Custom order, drag tiles to reorder any grid; on touch, press and hold before dragging. Filtered views preserve the positions of hidden sessions. Dragging favourites switches the grid back to Custom order.

@@ -298,8 +298,23 @@ class _WorkspaceShellState extends State<_WorkspaceShell>
                 child: LayoutBuilder(
                   builder: (context, constraints) {
                     final sidebar = constraints.maxWidth >= 850;
+                    final maxSidebarWidth = math.max(
+                      208.0,
+                      math.min(520.0, constraints.maxWidth - 642),
+                    );
+                    final sidebarWidth = app.snapshot.sidebarWidth.clamp(
+                      208.0,
+                      maxSidebarWidth,
+                    );
+                    void resizeSidebar(double delta) => app.setSidebarWidth(
+                      (app.snapshot.sidebarWidth.clamp(208.0, maxSidebarWidth) +
+                              delta)
+                          .clamp(208.0, maxSidebarWidth),
+                    );
                     final narrow =
                         constraints.maxWidth < 620 ||
+                        (sidebar &&
+                            constraints.maxWidth - sidebarWidth < 700) ||
                         constraints.maxHeight < 420;
                     final sourceLabel = app.source == 'demo'
                         ? 'Demo'
@@ -311,16 +326,64 @@ class _WorkspaceShellState extends State<_WorkspaceShell>
                     return Row(
                       children: [
                         if (sidebar)
-                          _Sidebar(
-                            app: app,
-                            selectComputer: filter,
-                            filter: filter,
-                            newGroup: newGroup,
-                            newSession: () => showCreateSession(context, app),
-                            newWorkspace: () =>
-                                showCreateWorkspace(context, app),
-                            openWindow: widget.openWindow,
-                            settings: settings,
+                          SizedBox(
+                            key: const ValueKey('persistent-sidebar'),
+                            width: sidebarWidth,
+                            child: Stack(
+                              children: [
+                                _Sidebar(
+                                  width: sidebarWidth,
+                                  app: app,
+                                  selectComputer: filter,
+                                  filter: filter,
+                                  newGroup: newGroup,
+                                  newSession: () =>
+                                      showCreateSession(context, app),
+                                  newWorkspace: () =>
+                                      showCreateWorkspace(context, app),
+                                  openWindow: widget.openWindow,
+                                  settings: settings,
+                                ),
+                                Positioned(
+                                  top: 0,
+                                  bottom: 0,
+                                  right: 0,
+                                  width: 8,
+                                  child: Semantics(
+                                    label: 'Resize sidebar',
+                                    value: '${sidebarWidth.round()} pixels',
+                                    increasedValue:
+                                        '${(sidebarWidth + 32).clamp(208.0, maxSidebarWidth).round()} pixels',
+                                    decreasedValue:
+                                        '${(sidebarWidth - 32).clamp(208.0, maxSidebarWidth).round()} pixels',
+                                    onIncrease: () => resizeSidebar(32),
+                                    onDecrease: () => resizeSidebar(-32),
+                                    child: MouseRegion(
+                                      cursor: SystemMouseCursors.resizeColumn,
+                                      child: Tooltip(
+                                        message: 'Drag to resize sidebar. Double-click to reset.',
+                                        child: GestureDetector(
+                                          key: const ValueKey('sidebar-resize'),
+                                          behavior: HitTestBehavior.opaque,
+                                          onHorizontalDragUpdate: (details) =>
+                                              resizeSidebar(details.delta.dx),
+                                          onDoubleTap: () =>
+                                              app.setSidebarWidth(208),
+                                          child: Center(
+                                            child: Container(
+                                              width: 2,
+                                              height: 36,
+                                              color: context.mutedInk
+                                                  .withValues(alpha: .5),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         Expanded(
                           child: Column(

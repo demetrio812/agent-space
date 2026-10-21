@@ -183,6 +183,7 @@ bool _validFilter(String value) {
 class AppSnapshot {
   String activeSource = 'demo';
   String appearance = 'system';
+  double sidebarWidth = 208;
   String dictationProvider = 'openai';
   DictationShortcut dictationShortcut = const DictationShortcut();
   final layouts = <String, WorkspaceLayout>{};
@@ -195,6 +196,7 @@ class AppSnapshot {
     'version': 1,
     'activeSource': activeSource,
     'appearance': appearance,
+    'sidebarWidth': sidebarWidth,
     'dictationProvider': dictationProvider,
     'dictationShortcut': dictationShortcut.toJson(),
     'layouts': layouts.map((key, value) => MapEntry(key, value.toJson())),
@@ -207,6 +209,10 @@ class AppSnapshot {
       throw const FormatException('Unsupported saved layout version.');
     }
     final result = AppSnapshot();
+    final sidebarWidth = j['sidebarWidth'];
+    if (sidebarWidth is num && sidebarWidth.isFinite) {
+      result.sidebarWidth = sidebarWidth.toDouble().clamp(208, 520);
+    }
     result.dictationShortcut = DictationShortcut.fromJson(
       j['dictationShortcut'],
     );

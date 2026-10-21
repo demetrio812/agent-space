@@ -2056,6 +2056,15 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
+  void setSidebarWidth(double value) {
+    if (!value.isFinite) return;
+    final width = value.clamp(208.0, 520.0);
+    if (snapshot.sidebarWidth == width) return;
+    snapshot.sidebarWidth = width;
+    _scheduleSave();
+    notifyListeners();
+  }
+
   void setAppearance(String value) {
     if (!['system', 'light', 'dark'].contains(value) ||
         snapshot.appearance == value) {
