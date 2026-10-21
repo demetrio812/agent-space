@@ -1,0 +1,8 @@
+#!/bin/zsh
+set -euo pipefail
+APP_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+TEST_DIR="$(mktemp -d)"
+trap 'rm -rf "$TEST_DIR"' EXIT
+xcrun swiftc "$APP_ROOT/macos/Runner/MacKeyboardEventNormalizer.swift" \
+  "$APP_ROOT/test/native/macos_keyboard_test.swift" -o "$TEST_DIR/keyboard-tests"
+"$TEST_DIR/keyboard-tests"

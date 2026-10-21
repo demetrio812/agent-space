@@ -170,7 +170,9 @@ void main() {
         final capture = DictationCapture(
           DictationProvider.openai,
           microphone: mic,
-          timeout: const Duration(milliseconds: 150),
+          // The same deadline covers both the initial WebSocket handshake and
+          // the missing final event. Don't fail the handshake under build load.
+          timeout: const Duration(seconds: 5),
           connect: (_, _) => WebSocket.connect('ws://127.0.0.1:${server.port}'),
         );
         await capture.start('test-key');

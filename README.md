@@ -100,6 +100,8 @@ The default Mac build is for local testing, ad-hoc signed and not notarized. The
 
 ## Verification
 
+On macOS, run `scripts/test-macos-keyboard` to check compatibility with generated paste shortcuts from dictation and clipboard apps.
+
 Run the optional transport checks against disposable servers only:
 
 ```sh

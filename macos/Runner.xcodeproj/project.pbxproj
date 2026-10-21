@@ -31,6 +31,7 @@
 		C97A2A26C32A78E221A74E49 /* Pods_Runner.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 874722743C347673AA02BA67 /* Pods_Runner.framework */; };
 		A55E10000000000000000001 /* HerdrNativeClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A55E00000000000000000001 /* HerdrNativeClient.swift */; };
 		A55E10000000000000000002 /* HerdrHelperProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = A55E00000000000000000002 /* HerdrHelperProtocol.swift */; };
+		A55E10000000000000000003 /* MacKeyboardEventNormalizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A55E00000000000000000003 /* MacKeyboardEventNormalizer.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -92,6 +93,7 @@
 		9C525975A351C905242F3E91 /* Pods-RunnerTests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RunnerTests.release.xcconfig"; path = "Target Support Files/Pods-RunnerTests/Pods-RunnerTests.release.xcconfig"; sourceTree = "<group>"; };
 		A55E00000000000000000001 /* HerdrNativeClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HerdrNativeClient.swift"; sourceTree = "<group>"; };
 		A55E00000000000000000002 /* HerdrHelperProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "../HerdrHelper/HerdrHelperProtocol.swift"; sourceTree = "<group>"; };
+		A55E00000000000000000003 /* MacKeyboardEventNormalizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "MacKeyboardEventNormalizer.swift"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -180,6 +182,7 @@
 			isa = PBXGroup;
 			children = (
 				33CC10F02044A3C60003C045 /* AppDelegate.swift */,
+				A55E00000000000000000003 /* MacKeyboardEventNormalizer.swift */,
 				33CC11122044BFA00003C045 /* MainFlutterWindow.swift */,
 				A55E00000000000000000002 /* HerdrHelperProtocol.swift */,
 				A55E00000000000000000001 /* HerdrNativeClient.swift */,
@@ -458,6 +461,7 @@
 				A55E10000000000000000002 /* HerdrHelperProtocol.swift in Sources */,
 				A55E10000000000000000001 /* HerdrNativeClient.swift in Sources */,
 				33CC10F12044A3C60003C045 /* AppDelegate.swift in Sources */,
+				A55E10000000000000000003 /* MacKeyboardEventNormalizer.swift in Sources */,
 				335BBD1B22A9A15E00E9071D /* GeneratedPluginRegistrant.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

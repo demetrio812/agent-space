@@ -761,7 +761,13 @@ void main() {
           backend.session.key.id,
           TerminalInput.keys(['up', 'ctrl+enter']),
         );
-        await Future<void>.delayed(const Duration(milliseconds: 250));
+        // Input waits for the persisted checkpoint before delivery. Observe
+        // delivery instead of assuming disk I/O completes within 250 ms.
+        final deliveryWait = Stopwatch()..start();
+        while (backend.input.length < 2 &&
+            deliveryWait.elapsed < const Duration(seconds: 5)) {
+          await Future<void>.delayed(const Duration(milliseconds: 10));
+        }
         expect(backend.input.map((i) => i.toJson()).toList(), [
           {'text': 'café '},
           {
