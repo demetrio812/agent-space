@@ -101,6 +101,7 @@ The default Mac build is for local testing, ad-hoc signed and not notarized. The
 ## Verification
 
 On macOS, run `scripts/test-macos-keyboard` to check compatibility with generated paste shortcuts from dictation and clipboard apps.
+Run `scripts/test-macos-startup` after `fvm install` to verify the native paste handler is registered at launch. An optional first argument selects a Flutter SDK directory.
 
 Run the optional transport checks against disposable servers only:
 

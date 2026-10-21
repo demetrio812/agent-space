@@ -1,0 +1,16 @@
+#!/bin/zsh
+set -euo pipefail
+APP_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+FLUTTER_SDK="${1:-$APP_ROOT/.fvm/flutter_sdk}"
+FRAMEWORKS="$FLUTTER_SDK/bin/cache/artifacts/engine/darwin-x64-release/FlutterMacOS.xcframework/macos-arm64_x86_64"
+TEST_DIR="$(mktemp -d)"
+trap 'rm -rf "$TEST_DIR"' EXIT
+# Replace only the executable entry-point annotation; the delegate implementation
+# and the pinned Flutter superclass are exercised without starting the real app.
+sed '/^@main$/d' "$APP_ROOT/macos/Runner/AppDelegate.swift" > "$TEST_DIR/AppDelegate.swift"
+xcrun swiftc -F "$FRAMEWORKS" -framework FlutterMacOS \
+  -Xlinker -rpath -Xlinker "$FRAMEWORKS" \
+  "$TEST_DIR/AppDelegate.swift" \
+  "$APP_ROOT/macos/Runner/MacKeyboardEventNormalizer.swift" \
+  "$APP_ROOT/test/native/macos_startup_test.swift" -o "$TEST_DIR/startup-tests"
+"$TEST_DIR/startup-tests"

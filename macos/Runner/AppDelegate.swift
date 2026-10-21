@@ -1,12 +1,14 @@
 import Cocoa
 import FlutterMacOS
+import os.log
 
 @main
 class AppDelegate: FlutterAppDelegate {
   private var keyboardMonitor: Any?
 
   override func applicationDidFinishLaunching(_ notification: Notification) {
-    super.applicationDidFinishLaunching(notification)
+    // FlutterAppDelegate implements willFinishLaunching, but not this optional
+    // callback. Calling super here raises before the monitor can be installed.
     keyboardMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) { event in
       // Local to our Flutter windows, including detached session windows.
       // This neither monitors other apps nor reads/pastes the clipboard itself.
@@ -14,6 +16,9 @@ class AppDelegate: FlutterAppDelegate {
             window.contentViewController is FlutterViewController else { return event }
       return MacKeyboardEventNormalizer.normalize(event)
     }
+    os_log("Keyboard event monitor installed: %{public}d",
+      log: OSLog(subsystem: "io.novaware.agentspace", category: "Keyboard"),
+      type: .default, keyboardMonitor != nil ? 1 : 0)
   }
 
   deinit {
