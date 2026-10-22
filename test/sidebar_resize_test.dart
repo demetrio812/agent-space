@@ -24,6 +24,15 @@ void main() {
       expect(tester.getSize(sidebar).width, greaterThan(350));
       final saved = AppSnapshot.fromJson(app.snapshot.toJson());
       expect(saved.sidebarWidth, app.snapshot.sidebarWidth);
+      final selected = app.layout.selectedId;
+      await tester.tap(find.byKey(const ValueKey('sidebar-logo')));
+      await tester.pumpAndSettle();
+      expect(sidebar, findsNothing);
+      expect(app.layout.selectedId, selected);
+      await tester.tap(find.byKey(const ValueKey('show-sidebar')));
+      await tester.pumpAndSettle();
+      expect(tester.getSize(sidebar).width, saved.sidebarWidth);
+      expect(app.layout.selectedId, selected);
       await tester.binding.setSurfaceSize(const Size(850, 600));
       await tester.pumpAndSettle();
       expect(tester.getSize(sidebar).width, 208);

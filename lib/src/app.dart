@@ -82,6 +82,7 @@ class _WorkspaceShellState extends State<_WorkspaceShell>
   final searchFocus = FocusNode();
   final searchField = TextEditingController();
   bool searching = false;
+  bool sidebarCollapsed = false;
   AppController get app => widget.app;
   @override
   void initState() {
@@ -276,6 +277,7 @@ class _WorkspaceShellState extends State<_WorkspaceShell>
                           app: app,
                           width: double.infinity,
                           onClose: closeSidebar,
+                          onToggle: closeSidebar,
                           selectComputer: filter,
                           filter: (value) {
                             closeSidebar();
@@ -298,7 +300,8 @@ class _WorkspaceShellState extends State<_WorkspaceShell>
               body: SafeArea(
                 child: LayoutBuilder(
                   builder: (context, constraints) {
-                    final sidebar = constraints.maxWidth >= 850;
+                    final wide = constraints.maxWidth >= 850;
+                    final sidebar = wide && !sidebarCollapsed;
                     final maxSidebarWidth = math.max(
                       208.0,
                       math.min(520.0, constraints.maxWidth - 642),
@@ -335,6 +338,8 @@ class _WorkspaceShellState extends State<_WorkspaceShell>
                                 _Sidebar(
                                   width: sidebarWidth,
                                   app: app,
+                                  onToggle: () =>
+                                      setState(() => sidebarCollapsed = true),
                                   selectComputer: filter,
                                   filter: filter,
                                   newGroup: newGroup,
@@ -420,8 +425,20 @@ class _WorkspaceShellState extends State<_WorkspaceShell>
                                           Expanded(
                                             child: Row(
                                               children: [
+                                                if (wide && !sidebar)
+                                                  CompactIcon(
+                                                    Icons.apps,
+                                                    'Show sidebar',
+                                                    () => setState(
+                                                      () => sidebarCollapsed =
+                                                          false,
+                                                    ),
+                                                    key: const ValueKey(
+                                                      'show-sidebar',
+                                                    ),
+                                                  ),
                                                 Flexible(
-                                                  child: !sidebar
+                                                  child: !wide
                                                       ? TextButton(
                                                           key: const ValueKey(
                                                             'workspace-picker',
@@ -732,12 +749,14 @@ class _Sidebar extends StatelessWidget {
     required this.newSession,
     required this.newWorkspace,
     required this.settings,
+    required this.onToggle,
     this.openWindow,
     this.width = 208,
     this.onClose,
   });
   final double width;
   final VoidCallback? onClose;
+  final VoidCallback onToggle;
   final AppController app;
   final void Function(String) filter, selectComputer;
   final VoidCallback newGroup, newSession, newWorkspace, settings;
@@ -752,24 +771,40 @@ class _Sidebar extends StatelessWidget {
         Padding(
           padding: EdgeInsets.fromLTRB(
             20,
-            onClose == null ? 26 : 10,
+            onClose == null ? 15.5 : 10,
             12,
-            onClose == null ? 26 : 10,
+            onClose == null ? 15.5 : 10,
           ),
           child: Row(
             children: [
-              const Icon(Icons.apps, color: Color(0xffa1c2e6), size: 23),
-              const SizedBox(width: 10),
-              const Expanded(
-                child: Text(
-                  'AgentSpace',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: -0.4,
+              Expanded(
+                child: TextButton(
+                  key: const ValueKey('sidebar-logo'),
+                  onPressed: onToggle,
+                  style: TextButton.styleFrom(
+                    padding: EdgeInsets.zero,
+                    alignment: Alignment.centerLeft,
+                    minimumSize: const Size(48, 44),
+                    foregroundColor: Colors.white,
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.apps, color: Color(0xffa1c2e6), size: 23),
+                      SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'AgentSpace',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: -0.4,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
