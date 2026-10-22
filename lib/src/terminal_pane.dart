@@ -26,12 +26,16 @@ class TerminalPane extends StatefulWidget {
     this.openWindow,
     required this.compact,
     this.mobileControls = false,
+    this.embedded = false,
+    this.active = true,
+    this.visible = true,
   });
   final AppController app;
   final SessionInfo session;
   final OpenDesktopWindow? openWindow;
   final bool compact;
   final bool mobileControls;
+  final bool embedded, active, visible;
   @override
   State<TerminalPane> createState() => _TerminalPaneState();
 }
@@ -73,6 +77,7 @@ class _TerminalPaneState extends State<TerminalPane> {
 
   KeyEventResult handleDictationShortcut(KeyEvent event) {
     if (!mounted ||
+        !widget.active ||
         defaultTargetPlatform != TargetPlatform.macOS ||
         !widget.app.snapshot.dictationShortcut.matches(event) ||
         ModalRoute.of(context)?.isCurrent != true ||
@@ -232,7 +237,7 @@ class _TerminalPaneState extends State<TerminalPane> {
         final compact = widget.compact || short;
         return Column(
           children: [
-            if (rows.length > 1 && !short)
+            if (!widget.embedded && rows.length > 1 && !short)
               Container(
                 height: 49,
                 color: context.tabs,
@@ -316,12 +321,13 @@ class _TerminalPaneState extends State<TerminalPane> {
               color: context.panel,
               child: Row(
                 children: [
-                  CompactIcon(
-                    Icons.arrow_back,
-                    'Session overview',
-                    app.overview,
-                    key: const ValueKey('show-overview'),
-                  ),
+                  if (!widget.embedded)
+                    CompactIcon(
+                      Icons.arrow_back,
+                      'Session overview',
+                      app.overview,
+                      key: const ValueKey('show-overview'),
+                    ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Tooltip(
@@ -557,11 +563,18 @@ class _TerminalPaneState extends State<TerminalPane> {
                     : TerminalDropTarget(
                         app: app,
                         sessionId: session.key.id,
+                        enabled: widget.visible,
+                        onActivate: widget.embedded
+                            ? () => app.select(session.key.id)
+                            : null,
                         child: TerminalSurface(
-                          autofocus: true,
+                          autofocus:
+                              widget.active && !composerOpen && !dictationOpen,
                           onDictate: () => unawaited(dictate()),
                           showMobileControls:
-                              widget.mobileControls && !composerOpen,
+                              widget.mobileControls &&
+                              widget.active &&
+                              !composerOpen,
                           mobileStatus: MobileTerminalStatusMenu(
                             summary: statusSummary,
                             details: [
@@ -589,7 +602,9 @@ class _TerminalPaneState extends State<TerminalPane> {
                           zoom: app.layout.zoom,
                           copy: copyTerminal,
                           inputId: session.key.id,
-                          onViewport: app.canResizeViewport(session.key.id)
+                          onViewport:
+                              widget.visible &&
+                                  app.canResizeViewport(session.key.id)
                               ? (cols, rows) => app.updateViewport(
                                   session.key.id,
                                   cols,
@@ -610,7 +625,10 @@ class _TerminalPaneState extends State<TerminalPane> {
                                   app.connectionState ==
                                       ConnectionState.stale) &&
                               state?.uncertain != true,
-                          sendInput: app.canSendTerminalInput(session.key.id)
+                          sendInput:
+                              widget.active &&
+                                  widget.visible &&
+                                  app.canSendTerminalInput(session.key.id)
                               ? (input) =>
                                     app.sendTerminalInput(session.key.id, input)
                               : null,
@@ -1033,6 +1051,7 @@ class _TerminalSurfaceState extends State<TerminalSurface> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted ||
           widget.inputId != id ||
+          !widget.autofocus ||
           widget.sendInput == null ||
           !_needsInitialFocus ||
           ModalRoute.of(context)?.isCurrent == false) {
@@ -1083,7 +1102,10 @@ class _TerminalSurfaceState extends State<TerminalSurface> {
       _detach(oldWidget.terminal);
       _attach();
     }
-    if (oldWidget.inputId != widget.inputId) _needsInitialFocus = true;
+    if (oldWidget.inputId != widget.inputId ||
+        !oldWidget.autofocus && widget.autofocus) {
+      _needsInitialFocus = true;
+    }
     if ((widget.sendInput == null && !widget.preserveFocusWhilePaused ||
             oldWidget.inputId != widget.inputId) &&
         focus.hasFocus) {

@@ -10,6 +10,7 @@ import 'package:flutter/services.dart';
 import 'backend.dart';
 import 'controller.dart';
 import 'group_actions_ui.dart';
+import 'group_split_view.dart';
 import 'storage.dart' show TabGroup;
 import 'models.dart';
 import 'settings_sheet.dart';
@@ -602,8 +603,18 @@ class _WorkspaceShellState extends State<_WorkspaceShell>
                                         ],
                                       ),
                               ),
+                              if (app.selectedGroup != null)
+                                GroupLayoutSelector(app: app),
                               Expanded(
-                                child: app.selectedSession == null
+                                child: app.hasGroupSplit
+                                    ? GroupSplitView(
+                                        key: ValueKey(
+                                          '${app.source}/${app.selectedGroup!.id}',
+                                        ),
+                                        app: app,
+                                        desktop: widget.desktop,
+                                      )
+                                    : app.selectedSession == null
                                     ? Column(
                                         children: [
                                           if ((app.layout.filter == 'all' ||

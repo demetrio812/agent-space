@@ -8,15 +8,48 @@ import 'session_actions.dart';
 const maxLayoutBytes = 1024 * 1024;
 const maxUncertainDeliveries = 256;
 
+enum GroupView {
+  tabs('Tabs', 1),
+  columns('Two columns', 2),
+  rows('Two rows', 2),
+  grid('Four panels', 4);
+
+  const GroupView(this.label, this.count);
+  final String label;
+  final int count;
+}
+
 class TabGroup {
   TabGroup(this.id, this.name, this.sessions);
   final String id;
   String name;
   final List<String> sessions;
+  GroupView view = GroupView.tabs;
+  final panels = List<String?>.filled(4, null);
+  bool panelsInitialized = false;
+  int activePanel = 0;
+  double columnRatio = .5, rowRatio = .5;
+
+  void sanitizePanels() {
+    final seen = <String>{};
+    for (var i = 0; i < panels.length; i++) {
+      final id = panels[i];
+      if (id != null && (!sessions.contains(id) || !seen.add(id))) {
+        panels[i] = null;
+      }
+    }
+  }
+
   Map<String, dynamic> toJson() => {
     'id': id,
     'name': name,
     'sessions': sessions.take(256).toList(),
+    'view': view.name,
+    'panels': panels,
+    'panelsInitialized': panelsInitialized,
+    'activePanel': activePanel,
+    'columnRatio': columnRatio,
+    'rowRatio': rowRatio,
   };
   static TabGroup? fromJson(dynamic j) {
     if (j is! Map ||
@@ -25,7 +58,7 @@ class TabGroup {
         j['sessions'] is! List) {
       return null;
     }
-    return TabGroup(
+    final group = TabGroup(
       j['id'],
       displayText(j['name']),
       (j['sessions'] as List)
@@ -35,6 +68,26 @@ class TabGroup {
           .take(256)
           .toList(),
     );
+    group.view =
+        GroupView.values.where((v) => v.name == j['view']).firstOrNull ??
+        GroupView.tabs;
+    if (j['panels'] is List) {
+      final slots = j['panels'] as List;
+      for (var i = 0; i < slots.length && i < 4; i++) {
+        if (slots[i] is String && SessionKey.decode(slots[i]) != null) {
+          group.panels[i] = slots[i];
+        }
+      }
+      group.sanitizePanels();
+      group.panelsInitialized = j['panelsInitialized'] != false;
+    }
+    final active = j['activePanel'];
+    if (active is int && active >= 0 && active < 4) group.activePanel = active;
+    double ratio(dynamic value) =>
+        value is num && value.isFinite ? value.toDouble().clamp(.2, .8) : .5;
+    group.columnRatio = ratio(j['columnRatio']);
+    group.rowRatio = ratio(j['rowRatio']);
+    return group;
   }
 }
 

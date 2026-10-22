@@ -106,6 +106,8 @@ class AppController extends ChangeNotifier {
   final sessionActionStates = <String, SessionActionState>{};
   final externalTargets = <String, Set<String>>{};
   final _previewTargets = <String>[];
+  final _panelTargets = <String>{};
+  Object? _panelOwner;
   final _terminalInput = <String, _TerminalInputQueue>{};
   final _terminalDispatches = <String, _TerminalInputQueue>{};
   final _composedDispatches = <String, SendState>{};
@@ -118,6 +120,121 @@ class AppController extends ChangeNotifier {
   Timer? _backgroundTimer;
   Future<void>? _suspending;
   bool get isActive => _active;
+  TabGroup? get selectedGroup => layout.filter.startsWith('group:')
+      ? layout.groups
+            .where((g) => g.id == layout.filter.substring(6))
+            .firstOrNull
+      : null;
+  bool get hasGroupSplit =>
+      selectedGroup != null && selectedGroup!.view != GroupView.tabs;
+  bool _ownsViewport(String id) =>
+      (layout.selectedId == id || _panelTargets.contains(id)) &&
+      !externalTargets.values.any((ids) => ids.contains(id));
+
+  void _prepareGroup(TabGroup group) {
+    group.sanitizePanels();
+    if (!group.panelsInitialized) {
+      final ids = [...group.sessions];
+      final selected = layout.selectedId;
+      if (selected != null &&
+          ids.contains(selected) &&
+          ids.indexOf(selected) >= 4) {
+        ids.remove(selected);
+        ids.insert(0, selected);
+      }
+      for (var i = 0; i < 4; i++) {
+        group.panels[i] = i < ids.length ? ids[i] : null;
+      }
+      group.panelsInitialized = true;
+    }
+    group.activePanel = group.activePanel.clamp(0, group.view.count - 1);
+  }
+
+  void setGroupView(GroupView view) {
+    final group = selectedGroup;
+    if (group == null) return;
+    group.view = view;
+    if (view == GroupView.tabs) {
+      _panelTargets.clear();
+    } else {
+      _panelTargets.removeWhere(
+        (id) => !group.panels.take(view.count).contains(id),
+      );
+    }
+    if (view != GroupView.tabs) {
+      _prepareGroup(group);
+      final selected = layout.selectedId;
+      final id =
+          (group.sessions.contains(selected) ? selected : null) ??
+          group.panels[group.activePanel] ??
+          group.panels.take(view.count).whereType<String>().firstOrNull;
+      if (id != null) select(id);
+    }
+    _syncStreams();
+    _scheduleSave();
+    notifyListeners();
+  }
+
+  void assignGroupPanel(int slot, String? id) {
+    final group = selectedGroup;
+    if (group == null ||
+        !hasGroupSplit ||
+        slot < 0 ||
+        slot >= group.view.count ||
+        (id != null && !group.sessions.contains(id))) {
+      return;
+    }
+    final other = id == null ? -1 : group.panels.indexOf(id);
+    if (other >= 0 && other != slot) group.panels[other] = group.panels[slot];
+    group.panels[slot] = id;
+    group.activePanel = slot;
+    _cancelTerminalInput();
+    layout.selectedId = null;
+    if (id != null) select(id);
+    _panelTargets.removeWhere(
+      (id) => !group.panels.take(group.view.count).contains(id),
+    );
+    _syncStreams();
+    _scheduleSave();
+    notifyListeners();
+  }
+
+  void setGroupRatios({double? column, double? row}) {
+    final group = selectedGroup;
+    if (group == null) return;
+    if (column != null && column.isFinite) {
+      group.columnRatio = column.clamp(.2, .8);
+    }
+    if (row != null && row.isFinite) group.rowRatio = row.clamp(.2, .8);
+    _scheduleSave();
+    notifyListeners();
+  }
+
+  void releaseGroupPanelTargets(Object owner) {
+    if (_disposed || _panelOwner != owner) return;
+    _panelOwner = null;
+    _panelTargets.clear();
+    _syncStreams();
+    notifyListeners();
+  }
+
+  void setGroupPanelTargets(String groupId, List<String> ids, {Object? owner}) {
+    if (_disposed) return;
+    final group = selectedGroup;
+    if (group?.id != groupId || !hasGroupSplit) return;
+    final next = ids
+        .where((id) => group!.panels.take(group.view.count).contains(id))
+        .take(4)
+        .toSet();
+    _panelOwner = owner;
+    if (setEquals(next, _panelTargets)) return;
+    _panelTargets
+      ..clear()
+      ..addAll(next);
+    _syncStreams();
+    notifyListeners();
+  }
+
   SessionInfo? get selectedSession =>
       layout.selectedId == null ? null : sessionById(layout.selectedId!);
   SessionInfo? sessionById(String id) =>
@@ -396,8 +513,14 @@ class AppController extends ChangeNotifier {
     computers = [];
     _previewTargets.clear();
     externalTargets.clear();
+    _panelTargets.clear();
     search = '';
     snapshot.activeSource = target;
+    final group = selectedGroup;
+    if (group != null && hasGroupSplit) {
+      _prepareGroup(group);
+      layout.selectedId = group.panels[group.activePanel];
+    }
     for (final id in layout.uncertainDeliveries) {
       sendStates[id] = SendState()
         ..uncertain = true
@@ -669,6 +792,12 @@ class AppController extends ChangeNotifier {
     _cancelTerminalInput();
     layout.filter = filter;
     layout.selectedId = null;
+    _panelTargets.clear();
+    final group = selectedGroup;
+    if (group != null && group.view != GroupView.tabs) {
+      _prepareGroup(group);
+      layout.selectedId = group.panels[group.activePanel];
+    }
     search = '';
     _previewTargets.clear();
     _syncStreams();
@@ -684,6 +813,22 @@ class AppController extends ChangeNotifier {
   void select(String id) {
     final session = sessionById(id);
     if (session == null) return;
+    final group = selectedGroup;
+    if (group != null && hasGroupSplit && group.sessions.contains(id)) {
+      final slot = group.panels.take(group.view.count).toList().indexOf(id);
+      if (slot >= 0) {
+        group.activePanel = slot;
+      } else {
+        final previous = group.panels.indexOf(id);
+        if (previous >= 0) {
+          group.panels[previous] = group.panels[group.activePanel];
+        }
+        group.panels[group.activePanel] = id;
+      }
+      _panelTargets.removeWhere(
+        (target) => !group.panels.take(group.view.count).contains(target),
+      );
+    }
     if (layout.selectedId != id) _cancelTerminalInput();
     layout.selectedId = id;
     layout.recentSessions
@@ -698,6 +843,7 @@ class AppController extends ChangeNotifier {
   }
 
   void overview() {
+    if (hasGroupSplit) setGroupView(GroupView.tabs);
     _cancelTerminalInput();
     layout.selectedId = null;
     _syncStreams();
@@ -728,6 +874,7 @@ class AppController extends ChangeNotifier {
     if (_disposed) return;
     final requested = <String>{
       if (layout.selectedId != null) layout.selectedId!,
+      ..._panelTargets,
       ...externalTargets.values.expand((s) => s),
       ..._previewTargets,
     };
@@ -738,7 +885,7 @@ class AppController extends ChangeNotifier {
               .toSet()
         : <String>{};
     for (final row in terminals.entries.toList()) {
-      if (row.value.viewportControl && row.key != layout.selectedId) {
+      if (row.value.viewportControl && !_ownsViewport(row.key)) {
         row.value.viewportControl = false;
         row.value.viewportCols = null;
         row.value.viewportRows = null;
@@ -834,7 +981,7 @@ class AppController extends ChangeNotifier {
 
     final stream =
         entry.viewportControl &&
-            id == layout.selectedId &&
+            _ownsViewport(id) &&
             session.terminalViewportEnabled &&
             backend is TerminalViewportBackend
         ? (backend as TerminalViewportBackend).observeViewport(
@@ -890,7 +1037,7 @@ class AppController extends ChangeNotifier {
   bool canResizeViewport(String id) =>
       !_disposed &&
       _active &&
-      layout.selectedId == id &&
+      _ownsViewport(id) &&
       _backend is TerminalViewportBackend &&
       sessionById(id)?.terminalViewportEnabled == true &&
       sessionById(id)?.available == true &&
@@ -961,9 +1108,7 @@ class AppController extends ChangeNotifier {
           );
         }
       } catch (_) {
-        if (generation == _generation &&
-            layout.selectedId == id &&
-            !_disposed) {
+        if (generation == _generation && _ownsViewport(id) && !_disposed) {
           entry.message = 'Terminal resize failed. Reconnect the terminal.';
           notifyListeners();
         }
@@ -1937,10 +2082,23 @@ class AppController extends ChangeNotifier {
     final session = sessionById(id);
     if (session == null) return;
     for (final group in layout.groups) {
+      if (group == target) continue;
       group.sessions.remove(id);
+      group.sanitizePanels();
     }
-    if (target.sessions.length < 256) target.sessions.add(id);
+    if (target.sessions.length < 256 && !target.sessions.contains(id)) {
+      target.sessions.add(id);
+    }
     layout.retained[id] = session;
+    final current = selectedGroup;
+    if (current != null && !current.sessions.contains(id)) {
+      _panelTargets.remove(id);
+      if (layout.selectedId == id) {
+        _cancelTerminalInput();
+        layout.selectedId = null;
+      }
+    }
+    _syncStreams();
   }
 
   void moveToGroup(String id, String groupId) {
@@ -1954,6 +2112,13 @@ class AppController extends ChangeNotifier {
   void removeFromGroup(String id, String groupId) {
     final group = layout.groups.where((g) => g.id == groupId).firstOrNull;
     group?.sessions.remove(id);
+    group?.sanitizePanels();
+    _panelTargets.remove(id);
+    if (selectedGroup == group && layout.selectedId == id) {
+      _cancelTerminalInput();
+      layout.selectedId = null;
+    }
+    _syncStreams();
     _scheduleSave();
     notifyListeners();
   }

@@ -92,10 +92,11 @@ void main() {
     },
   );
   testWidgets(
-    'Finder drop preserves terminal bounds and ignores a second busy drop',
+    'Finder drop activates its panel, preserves bounds and ignores a second busy drop',
     (tester) async {
       final (app, b, id) = await setup();
       b.uploadHold = Completer<void>();
+      app.overview();
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -105,6 +106,7 @@ void main() {
               child: TerminalDropTarget(
                 app: app,
                 sessionId: id,
+                onActivate: () => app.select(id),
                 child: const ColoredBox(
                   key: ValueKey('screen'),
                   color: Colors.black,

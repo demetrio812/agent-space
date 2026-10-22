@@ -65,10 +65,14 @@ class TerminalDropTarget extends StatefulWidget {
     required this.app,
     required this.sessionId,
     required this.child,
+    this.onActivate,
+    this.enabled = true,
   });
   final AppController app;
   final String sessionId;
   final Widget child;
+  final VoidCallback? onActivate;
+  final bool enabled;
   @override
   State<TerminalDropTarget> createState() => _TerminalDropTargetState();
 }
@@ -94,7 +98,9 @@ class _TerminalDropTargetState extends State<TerminalDropTarget> {
   }
 
   Future<void> drop(DropDoneDetails details) async {
+    if (!widget.enabled) return;
     setState(() => hover = false);
+    widget.onActivate?.call();
     final app = widget.app, id = widget.sessionId;
     if (app.imageDrops[id]?.busy == true) return;
     if (!app.canDropImages(id)) {
@@ -149,7 +155,10 @@ class _TerminalDropTargetState extends State<TerminalDropTarget> {
             error != null ||
             (state != null && !identical(hidden, state));
         return DropTarget(
-          enable: ModalRoute.of(context)?.isCurrent != false && !busy,
+          enable:
+              widget.enabled &&
+              ModalRoute.of(context)?.isCurrent != false &&
+              !busy,
           onDragEntered: (_) => setState(() => hover = true),
           onDragExited: (_) => setState(() => hover = false),
           onDragDone: (details) => unawaited(drop(details)),
