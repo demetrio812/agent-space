@@ -7,48 +7,76 @@ import 'terminal_pane.dart';
 import 'ui_common.dart';
 
 class GroupLayoutSelector extends StatelessWidget {
-  const GroupLayoutSelector({super.key, required this.app});
+  const GroupLayoutSelector({
+    super.key,
+    required this.app,
+    this.compact = false,
+  });
   final AppController app;
+  final bool compact;
   @override
   Widget build(BuildContext context) {
     final group = app.selectedGroup!;
-    return Container(
-      height: 40,
-      color: context.panel,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      child: Row(
-        children: [
-          PopupMenuButton<GroupView>(
-            key: const ValueKey('group-layout'),
-            tooltip: 'Group layout',
-            initialValue: group.view,
-            onSelected: app.setGroupView,
-            itemBuilder: (_) => [
-              for (final view in GroupView.values)
-                PopupMenuItem(value: view, child: Text(view.label)),
-            ],
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.dashboard_outlined, size: 17),
-                  const SizedBox(width: 8),
-                  Text(group.view.label, style: const TextStyle(fontSize: 13)),
-                  const Icon(Icons.arrow_drop_down, size: 18),
-                ],
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        PopupMenuButton<String>(
+          key: const ValueKey('group-layout'),
+          tooltip: 'Group layout: ${group.view.label}',
+          initialValue: group.view.name,
+          onSelected: (value) {
+            if (value == 'equal') {
+              app.setGroupRatios(column: .5, row: .5);
+            } else {
+              app.setGroupView(
+                GroupView.values.firstWhere((v) => v.name == value),
+              );
+            }
+          },
+          itemBuilder: (_) => [
+            for (final view in GroupView.values)
+              CheckedPopupMenuItem(
+                value: view.name,
+                checked: view == group.view,
+                child: Text(view.label),
               ),
-            ),
+            if (compact && group.view != GroupView.tabs) ...[
+              const PopupMenuDivider(),
+              const PopupMenuItem(
+                value: 'equal',
+                child: Text('Equal panel sizes'),
+              ),
+            ],
+          ],
+          icon: compact ? const Icon(Icons.dashboard_outlined, size: 19) : null,
+          child: compact
+              ? null
+              : Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 10,
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.dashboard_outlined, size: 17),
+                      const SizedBox(width: 8),
+                      Text(
+                        group.view.label,
+                        style: const TextStyle(fontSize: 13),
+                      ),
+                      const Icon(Icons.arrow_drop_down, size: 18),
+                    ],
+                  ),
+                ),
+        ),
+        if (!compact && group.view != GroupView.tabs)
+          IconButton(
+            tooltip: 'Equal panel sizes',
+            onPressed: () => app.setGroupRatios(column: .5, row: .5),
+            icon: const Icon(Icons.splitscreen_outlined, size: 18),
           ),
-          const Spacer(),
-          if (group.view != GroupView.tabs)
-            IconButton(
-              tooltip: 'Equal panel sizes',
-              onPressed: () => app.setGroupRatios(column: .5, row: .5),
-              icon: const Icon(Icons.splitscreen_outlined, size: 18),
-            ),
-        ],
-      ),
+      ],
     );
   }
 }

@@ -417,62 +417,94 @@ class _WorkspaceShellState extends State<_WorkspaceShell>
                                       )
                                     : Row(
                                         children: [
-                                          if (!sidebar)
-                                            Expanded(
-                                              child: TextButton(
-                                                key: const ValueKey(
-                                                  'workspace-picker',
-                                                ),
-                                                onPressed: openSidebar,
-                                                style: TextButton.styleFrom(
-                                                  padding: EdgeInsets.zero,
-                                                  foregroundColor: context.ink,
-                                                  alignment:
-                                                      Alignment.centerLeft,
-                                                  minimumSize: const Size(
-                                                    48,
-                                                    44,
-                                                  ),
-                                                ),
-                                                child: Row(
-                                                  mainAxisSize:
-                                                      MainAxisSize.min,
-                                                  children: [
-                                                    const Icon(
-                                                      Icons.menu,
-                                                      size: 22,
-                                                    ),
-                                                    const SizedBox(width: 8),
-                                                    Flexible(
-                                                      child: Text(
-                                                        filterTitle,
-                                                        maxLines: 1,
-                                                        overflow: TextOverflow
-                                                            .ellipsis,
-                                                        style: const TextStyle(
-                                                          fontSize: 15,
-                                                          fontWeight:
-                                                              FontWeight.w600,
+                                          Expanded(
+                                            child: Row(
+                                              children: [
+                                                Flexible(
+                                                  child: !sidebar
+                                                      ? TextButton(
+                                                          key: const ValueKey(
+                                                            'workspace-picker',
+                                                          ),
+                                                          onPressed:
+                                                              openSidebar,
+                                                          style: TextButton.styleFrom(
+                                                            padding:
+                                                                EdgeInsets.zero,
+                                                            foregroundColor:
+                                                                context.ink,
+                                                            alignment: Alignment
+                                                                .centerLeft,
+                                                            minimumSize:
+                                                                const Size(
+                                                                  48,
+                                                                  44,
+                                                                ),
+                                                          ),
+                                                          child: Row(
+                                                            mainAxisSize:
+                                                                MainAxisSize
+                                                                    .min,
+                                                            children: [
+                                                              const Icon(
+                                                                Icons.menu,
+                                                                size: 22,
+                                                              ),
+                                                              const SizedBox(
+                                                                width: 8,
+                                                              ),
+                                                              Flexible(
+                                                                child: Text(
+                                                                  filterTitle,
+                                                                  maxLines: 1,
+                                                                  overflow:
+                                                                      TextOverflow
+                                                                          .ellipsis,
+                                                                  style: const TextStyle(
+                                                                    fontSize:
+                                                                        15,
+                                                                    fontWeight:
+                                                                        FontWeight
+                                                                            .w600,
+                                                                  ),
+                                                                ),
+                                                              ),
+                                                            ],
+                                                          ),
+                                                        )
+                                                      : Text(
+                                                          filterTitle,
+                                                          maxLines: 1,
+                                                          overflow: TextOverflow
+                                                              .ellipsis,
+                                                          style:
+                                                              const TextStyle(
+                                                                fontSize: 19,
+                                                                fontWeight:
+                                                                    FontWeight
+                                                                        .w600,
+                                                                letterSpacing:
+                                                                    -0.3,
+                                                              ),
                                                         ),
-                                                      ),
-                                                    ),
-                                                  ],
                                                 ),
-                                              ),
-                                            )
-                                          else
-                                            Expanded(
-                                              child: Text(
-                                                filterTitle,
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
-                                                style: const TextStyle(
-                                                  fontSize: 19,
-                                                  fontWeight: FontWeight.w600,
-                                                  letterSpacing: -0.3,
-                                                ),
-                                              ),
+                                                if (app.selectedGroup !=
+                                                    null) ...[
+                                                  const SizedBox(width: 8),
+                                                  GroupLayoutSelector(
+                                                    app: app,
+                                                    compact:
+                                                        narrow ||
+                                                        constraints.maxWidth -
+                                                                (sidebar
+                                                                    ? sidebarWidth
+                                                                    : 0) <
+                                                            1000,
+                                                  ),
+                                                ],
+                                              ],
                                             ),
+                                          ),
                                           if (!narrow)
                                             Padding(
                                               padding:
@@ -499,6 +531,7 @@ class _WorkspaceShellState extends State<_WorkspaceShell>
                                               beginSearch,
                                             ),
                                           if (app.layout.selectedId == null &&
+                                              app.selectedGroup == null &&
                                               app.layout.filter != 'recent')
                                             PopupMenuButton<SessionSort>(
                                               tooltip: 'Sort sessions',
@@ -603,8 +636,6 @@ class _WorkspaceShellState extends State<_WorkspaceShell>
                                         ],
                                       ),
                               ),
-                              if (app.selectedGroup != null)
-                                GroupLayoutSelector(app: app),
                               Expanded(
                                 child: app.hasGroupSplit
                                     ? GroupSplitView(
