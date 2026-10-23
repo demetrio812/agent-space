@@ -446,6 +446,8 @@ class _TerminalPaneState extends State<TerminalPane> {
                     icon: const Icon(Icons.more_horiz, size: 20),
                     onSelected: (value) {
                       switch (value) {
+                        case 'rename':
+                          unawaited(showRenameSession(context, app, session));
                         case 'info':
                           unawaited(showSessionInfo());
                         case 'copy':
@@ -471,6 +473,11 @@ class _TerminalPaneState extends State<TerminalPane> {
                       }
                     },
                     itemBuilder: (_) => [
+                      PopupMenuItem(
+                        value: 'rename',
+                        enabled: app.canManageSession(session),
+                        child: const Text('Rename'),
+                      ),
                       const PopupMenuItem(
                         value: 'info',
                         child: Text('Session details'),

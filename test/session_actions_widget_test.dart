@@ -220,7 +220,7 @@ void main() {
     },
   );
   testWidgets(
-    'rename keeps favourite order and close leaves an unavailable bookmark',
+    'rename an opened session keeps favourite order and close leaves a bookmark',
     (tester) async {
       await tester.binding.setSurfaceSize(const Size(1200, 800));
       addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -231,9 +231,10 @@ void main() {
         app.toggleFavourite(b);
         app.setFilter('favourites');
         final order = List.of(app.layout.favouriteOrder);
+        app.select(a.key.id);
         await tester.pumpWidget(AgentSpaceApp(controller: app));
         await tester.pumpAndSettle();
-        await tester.tap(find.byKey(ValueKey('session-menu-${a.key.id}')));
+        await tester.tap(find.byTooltip('Terminal controls'));
         await tester.pumpAndSettle();
         await tester.tap(find.text('Rename'));
         await tester.pumpAndSettle();
@@ -245,6 +246,10 @@ void main() {
         await tester.pumpAndSettle();
         expect(app.sessionById(a.key.id)!.title, 'Renamed favourite');
         expect(app.layout.favouriteOrder, order);
+        expect(app.layout.selectedId, a.key.id);
+        expect(find.text('Renamed favourite'), findsWidgets);
+        app.overview();
+        await tester.pumpAndSettle();
         await tester.tap(find.byKey(ValueKey('session-menu-${a.key.id}')));
         await tester.pumpAndSettle();
         await tester.tap(find.text('Close terminal…'));
