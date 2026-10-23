@@ -570,14 +570,43 @@ class _WorkspaceShellState extends State<_WorkspaceShell>
                                                   ),
                                               ],
                                             ),
-                                          IconButton(
-                                            tooltip: 'New session',
-                                            onPressed: () =>
-                                                showCreateSession(context, app),
+                                          PopupMenuButton<String>(
+                                            key: const ValueKey('header-new'),
+                                            tooltip: 'New',
                                             icon: const Icon(
                                               Icons.add_box_outlined,
                                               size: 21,
                                             ),
+                                            onSelected: (action) {
+                                              switch (action) {
+                                                case 'session':
+                                                  showCreateSession(
+                                                    context,
+                                                    app,
+                                                  );
+                                                case 'workspace':
+                                                  showCreateWorkspace(
+                                                    context,
+                                                    app,
+                                                  );
+                                                case 'group':
+                                                  newGroup();
+                                              }
+                                            },
+                                            itemBuilder: (_) => const [
+                                              PopupMenuItem(
+                                                value: 'session',
+                                                child: Text('New session'),
+                                              ),
+                                              PopupMenuItem(
+                                                value: 'workspace',
+                                                child: Text('New workspace'),
+                                              ),
+                                              PopupMenuItem(
+                                                value: 'group',
+                                                child: Text('New group'),
+                                              ),
+                                            ],
                                           ),
                                           if (app.layout.uncertainActions.keys
                                               .any(

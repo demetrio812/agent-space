@@ -58,11 +58,10 @@ void main() {
             }
             await tester.pumpWidget(AgentSpaceApp(controller: app));
             await tester.pumpAndSettle();
-            unawaited(
-              (workspaceAction ? showCreateWorkspace : showCreateSession)(
-                tester.element(find.byType(Scaffold).first),
-                app,
-              ),
+            await tester.tap(find.byKey(const ValueKey('header-new')));
+            await tester.pumpAndSettle();
+            await tester.tap(
+              find.text(workspaceAction ? 'New workspace' : 'New session'),
             );
             await tester.pumpAndSettle();
             final computer = tester.widget<DropdownButton<String>>(
@@ -277,7 +276,9 @@ void main() {
               AgentSpaceApp(controller: app, desktop: size.width > 1000),
             );
             await tester.pumpAndSettle();
-            await tester.tap(find.byTooltip('New session').first);
+            await tester.tap(find.byKey(const ValueKey('header-new')));
+            await tester.pumpAndSettle();
+            await tester.tap(find.text('New session'));
             await tester.pumpAndSettle();
             expect(
               find.byKey(const ValueKey('new-session-computer')),
@@ -413,7 +414,9 @@ void main() {
     try {
       await tester.pumpWidget(AgentSpaceApp(controller: app, desktop: false));
       await tester.pumpAndSettle();
-      await tester.tap(find.byTooltip('New session').first);
+      await tester.tap(find.byKey(const ValueKey('header-new')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('New session'));
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
       final button = find.widgetWithText(FilledButton, 'Create session');
@@ -449,7 +452,9 @@ void main() {
       try {
         await tester.pumpWidget(AgentSpaceApp(controller: app));
         await tester.pumpAndSettle();
-        await tester.tap(find.byTooltip('New session').first);
+        await tester.tap(find.byKey(const ValueKey('header-new')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('New session'));
         await tester.pumpAndSettle();
         await tester.enterText(
           find.byKey(const ValueKey('session-folder')),
