@@ -100,6 +100,68 @@ void main() {
       );
     }
   }
+  for (final scope in ['computer', 'workspace', 'other-workspace', 'all']) {
+    testWidgets('creating a session preserves its browsing context: $scope', (
+      tester,
+    ) async {
+      final app = await createApp();
+      try {
+        final computer = app.computers.first;
+        final workspace = computer.workspaces.last;
+        final destination = scopedWorkspaceId(computer.origin, workspace.id);
+        final filter = switch (scope) {
+          'computer' => 'computer:${computer.origin.computerId}',
+          'workspace' => destination,
+          'other-workspace' => scopedWorkspaceId(
+            computer.origin,
+            computer.workspaces.first.id,
+          ),
+          _ => 'all',
+        };
+        app.setFilter(filter);
+        await tester.pumpWidget(AgentSpaceApp(controller: app));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('header-new')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('New session'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('new-session-workspace')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text(workspace.label).last);
+        await tester.pumpAndSettle();
+        await tester.tap(find.widgetWithText(FilledButton, 'Create session'));
+        await tester.pumpAndSettle();
+        final created = app.selectedSession!;
+        expect(created.workspaceId, workspace.id);
+        expect(created.key.terminal, startsWith('created-'));
+        expect(
+          app.layout.filter,
+          scope == 'other-workspace' ? destination : filter,
+        );
+        expect(
+          app.selectedComputerId,
+          scope == 'all' ? null : computer.origin.computerId,
+        );
+        expect(
+          app.visibleSessions.map((s) => s.key.id),
+          contains(created.key.id),
+        );
+        app.overview();
+        await tester.pumpAndSettle();
+        expect(
+          app.layout.filter,
+          scope == 'other-workspace' ? destination : filter,
+        );
+        expect(
+          app.visibleSessions.map((s) => s.key.id),
+          contains(created.key.id),
+        );
+        expect(tester.takeException(), isNull);
+      } finally {
+        await closeApp(tester, app);
+      }
+    });
+  }
   for (final size in [const Size(390, 844), const Size(1024, 768)]) {
     testWidgets(
       'new workspace opens its shell and uses the current computer at $size',

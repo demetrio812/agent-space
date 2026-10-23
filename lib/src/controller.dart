@@ -1938,8 +1938,10 @@ class AppController extends ChangeNotifier {
           throw const SessionActionUncertain();
         }
         sessions = [...sessions.where((s) => s.key != created.key), created];
-        layout.filter = 'all';
-        search = '';
+        final filter = layout.filter;
+        final includesCreated = sessionsForFilter(filter)
+            .any((session) => session.key == created.key);
+        setFilter(includesCreated ? filter : created.workspaceFilterId);
         select(created.key.id);
       },
     );
