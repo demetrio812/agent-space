@@ -47,6 +47,52 @@ void main() {
     },
   );
 
+  for (final history in [false, true]) {
+    testWidgets(
+      'click keeps the remote row when clipped, scrollback: $history',
+      (tester) async {
+        final terminal = Terminal()
+          ..resize(80, 24)
+          ..write(history ? List.filled(100, 'earlier output\r\n').join() : '')
+          ..write('\x1b[23;1H6 new messages (click)');
+        final inputs = <TerminalInput>[];
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Center(
+              child: SizedBox(
+                width: 700,
+                height: 300,
+                child: TerminalSurface(
+                  terminal: terminal,
+                  controller: TerminalController(),
+                  zoom: 1,
+                  copy: () async {},
+                  inputId: 'clipped',
+                  onViewport: (_, _) {},
+                  onScroll: (_) async {},
+                  sendInput: inputs.add,
+                  forwardMouseClicks: true,
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final render = tester
+            .state<TerminalViewState>(find.byType(TerminalView))
+            .renderTerminal;
+        final local =
+            render.getOffset(CellOffset(6, terminal.buffer.scrollBack + 22)) +
+            render.cellSize.center(Offset.zero);
+        expect((Offset.zero & render.size).contains(local), isTrue);
+        await tester.tapAt(render.localToGlobal(local));
+        await tester.pump(const Duration(milliseconds: 350));
+        expect(inputs.single.clickCell, (column: 6, row: 22));
+        await tester.pumpWidget(const SizedBox());
+      },
+    );
+  }
+
   test(
     'clicks use the persisted input gate and uncertainty blocks later typing',
     () async {

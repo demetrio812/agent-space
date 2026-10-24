@@ -936,9 +936,10 @@ class _TerminalSurfaceState extends State<TerminalSurface> {
       if (render == null) return;
       final local = render.globalToLocal(event.position);
       if (!(Offset.zero & render.size).contains(local)) return;
-      final cell = render.getCellOffset(local),
-          first = render.getCellOffset(Offset.zero);
-      final row = cell.y - first.y;
+      final cell = render.getCellOffset(local);
+      // Herdr expects a row in the remote screen, not a row relative to the
+      // locally visible area (which can be clipped during resize or zoom).
+      final row = cell.y - widget.terminal.buffer.scrollBack;
       if (row >= 0 && row < widget.terminal.viewHeight) {
         widget.sendInput?.call(TerminalInput.click(cell.x, row));
       }
