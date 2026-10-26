@@ -92,6 +92,7 @@ class TabGroup {
 }
 
 class WorkspaceLayout {
+  final favouriteWorkspaces = <String>{};
   final favourites = <String, SessionInfo>{};
   final retained = <String, SessionInfo>{};
   final drafts = <String, String>{};
@@ -107,6 +108,7 @@ class WorkspaceLayout {
   double zoom = 1;
   double tileWidth = 310;
   Map<String, dynamic> toJson() => {
+    'favouriteWorkspaces': favouriteWorkspaces.take(256).toList(),
     'favourites': favourites.values.take(256).map((s) => s.toJson()).toList(),
     'retained': retained.values.take(256).map((s) => s.toJson()).toList(),
     'drafts': drafts,
@@ -139,6 +141,15 @@ class WorkspaceLayout {
       }
     }
 
+    if (j['favouriteWorkspaces'] is List) {
+      result.favouriteWorkspaces.addAll(
+        (j['favouriteWorkspaces'] as List)
+            .whereType<String>()
+            .where((id) => RegExp(r'^workspace:[0-9a-f]{64}$').hasMatch(id))
+            .toSet()
+            .take(256),
+      );
+    }
     entries('favourites', result.favourites);
     entries('retained', result.retained);
     if (j['uncertainDeliveries'] is List) {

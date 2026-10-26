@@ -13,6 +13,15 @@ List<PopupMenuEntry<String>> _items(
   SessionWorkspace workspace,
 ) => [
   PopupMenuItem(
+    value: 'favourite',
+    child: Text(
+      app.isWorkspaceFavourite(scopedWorkspaceId(origin, workspace.id))
+          ? 'Remove from favourites'
+          : 'Add to favourites',
+    ),
+  ),
+  const PopupMenuDivider(),
+  PopupMenuItem(
     value: 'rename',
     enabled: app.canManageWorkspace(origin, workspace),
     child: const Text('Rename'),
@@ -37,6 +46,10 @@ Future<void> _action(
   String action,
 ) async {
   if (!context.mounted) return;
+  if (action == 'favourite') {
+    app.toggleWorkspaceFavourite(scopedWorkspaceId(origin, workspace.id));
+    return;
+  }
   if (action == 'inspect') {
     await showSessionActionInspection(context, app, origin.computerId);
     return;
@@ -81,13 +94,17 @@ class WorkspaceActionsButton extends StatelessWidget {
     required this.app,
     required this.origin,
     required this.workspace,
+    this.menuKey,
   });
   final AppController app;
   final SessionOrigin origin;
   final SessionWorkspace workspace;
+  final Key? menuKey;
   @override
   Widget build(BuildContext context) => PopupMenuButton<String>(
-    key: ValueKey('workspace-menu-${scopedWorkspaceId(origin, workspace.id)}'),
+    key:
+        menuKey ??
+        ValueKey('workspace-menu-${scopedWorkspaceId(origin, workspace.id)}'),
     tooltip: 'Workspace actions',
     padding: EdgeInsets.zero,
     iconSize: 16,

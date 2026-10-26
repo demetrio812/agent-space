@@ -6,6 +6,32 @@ import 'package:agentspace/src/storage.dart';
 
 void main() {
   test(
+    'workspace favourites persist per connection and ignore malformed IDs',
+    () async {
+      final dir = await Directory.systemTemp.createTemp(
+        'agentspace-workspace-stars-',
+      );
+      addTearDown(() => dir.delete(recursive: true));
+      final store = LayoutStore(dir.path);
+      final id = 'workspace:${'a' * 64}';
+      final state = AppSnapshot();
+      state.layouts['local'] = WorkspaceLayout.fromJson({
+        'favouriteWorkspaces': [id, id, null, 42, 'bad-id'],
+      });
+      await store.save(state);
+      final restored = await store.load();
+      expect(restored.layoutFor('local').toJson()['favouriteWorkspaces'], [id]);
+      expect(
+        restored.layoutFor('demo').toJson()['favouriteWorkspaces'],
+        isEmpty,
+      );
+      expect(
+        WorkspaceLayout.fromJson({}).toJson()['favouriteWorkspaces'],
+        isEmpty,
+      );
+    },
+  );
+  test(
     'appearance persists and older layouts follow system appearance',
     () async {
       final dir = await Directory.systemTemp.createTemp('agentspace-theme-');

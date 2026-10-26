@@ -417,6 +417,28 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
+  bool isWorkspaceFavourite(String id) =>
+      layout.favouriteWorkspaces.contains(id);
+
+  void toggleWorkspaceFavourite(String id) {
+    if (isWorkspaceFavourite(id)) {
+      layout.favouriteWorkspaces.remove(id);
+    } else if (workspaceTarget(id) != null &&
+        layout.favouriteWorkspaces.length < 256) {
+      layout.favouriteWorkspaces.add(id);
+    } else {
+      return;
+    }
+    _scheduleSave();
+    notifyListeners();
+  }
+
+  Map<String, String> get favouriteWorkspaces => {
+    for (final id in layout.favouriteWorkspaces)
+      if (workspaceTarget(id) case final target?)
+        id: '${target.$2.label} · ${computerLabel(target.$1.computerId, origin: target.$1)}',
+  };
+
   Map<String, String> get sidebarWorkspaces {
     final computerId = selectedComputerId;
     final result = workspaces;
@@ -1993,6 +2015,9 @@ class AppController extends ChangeNotifier {
       origin,
       (backend) => backend.closeWorkspace(origin, workspace),
       applied: (_) {
+        layout.favouriteWorkspaces.remove(
+          scopedWorkspaceId(origin, workspace.id),
+        );
         final closing = sessions
             .where(
               (s) =>
