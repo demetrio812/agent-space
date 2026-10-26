@@ -9,7 +9,7 @@ import 'app_widget_test.dart' show createApp, closeApp;
 void main() {
   for (final size in [const Size(390, 844), const Size(1200, 800)]) {
     testWidgets(
-      'favourite workspaces stay visible across computer selection at $size',
+      'favourite workspaces appear first only under the selected computer at $size',
       (tester) async {
         await tester.binding.setSurfaceSize(size);
         addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -34,33 +34,44 @@ void main() {
           expect(find.text('Add to favourites'), findsOneWidget);
           await tester.tap(find.text('Add to favourites'));
           await tester.pumpAndSettle();
-          app.setFilter('all');
-          await tester.pumpAndSettle();
-          final pinned = find.byKey(ValueKey('favourite-workspace-$id'));
-          expect(pinned, findsOneWidget);
+          final starred = find.byKey(ValueKey('workspace-$id'));
+          final firstId = scopedWorkspaceId(
+            computer.origin,
+            computer.workspaces.first.id,
+          );
+          final first = find.byKey(ValueKey('workspace-$firstId'));
+          expect(find.text('Favourite workspaces'), findsNothing);
           expect(
-            find.descendant(of: pinned, matching: find.byIcon(Icons.star)),
+            find.descendant(of: starred, matching: find.byIcon(Icons.star)),
             findsOneWidget,
           );
           expect(
-            tester.getTopLeft(pinned).dy,
-            lessThan(tester.getTopLeft(find.text('Computers')).dy),
+            tester.getTopLeft(starred).dy,
+            lessThan(tester.getTopLeft(first).dy),
           );
-          await tester.tap(pinned);
+          expect(app.sidebarWorkspaces.keys.first, id);
+          app.setFilter('all');
+          await tester.pumpAndSettle();
+          expect(starred, findsNothing);
+          app.setFilter('computer:${computer.origin.computerId}');
+          await tester.pumpAndSettle();
+          expect(starred, findsOneWidget);
+          await tester.tap(starred);
           await tester.pumpAndSettle();
           expect(app.layout.filter, id);
-          expect(app.selectedComputerId, computer.origin.computerId);
           if (size.width < 700) {
             await tester.tap(find.byKey(const ValueKey('workspace-picker')));
             await tester.pumpAndSettle();
           }
-          await tester.tap(
-            find.byKey(ValueKey('favourite-workspace-menu-$id')),
-          );
+          await tester.tap(menu);
           await tester.pumpAndSettle();
           await tester.tap(find.text('Remove from favourites'));
           await tester.pumpAndSettle();
-          expect(find.byKey(ValueKey('favourite-workspace-$id')), findsNothing);
+          expect(
+            find.descendant(of: starred, matching: find.byIcon(Icons.star)),
+            findsNothing,
+          );
+          expect(app.sidebarWorkspaces.keys.first, firstId);
           expect(app.layout.filter, id);
           expect(tester.takeException(), isNull);
         } finally {
@@ -121,7 +132,7 @@ void main() {
         await tester.pumpAndSettle();
         expect(app.workspaceTarget(id)!.$2.label, 'Renamed workspace');
         expect(app.isWorkspaceFavourite(id), isTrue);
-        expect(app.favouriteWorkspaces[id], startsWith('Renamed workspace · '));
+        expect(app.workspaces[id], 'Renamed workspace');
         expect(
           app.sessions
               .where((s) => s.workspaceId == workspace.id)
@@ -145,7 +156,7 @@ void main() {
         await tester.pumpAndSettle();
         expect(app.workspaceTarget(id), isNull);
         expect(app.isWorkspaceFavourite(id), isFalse);
-        expect(app.favouriteWorkspaces, isEmpty);
+        expect(app.layout.favouriteWorkspaces, isEmpty);
         expect(app.sessions.any((s) => s.workspaceId == workspace.id), false);
         expect(app.layout.favourites[session.key.id]!.available, false);
         expect(app.layout.filter, 'computer:${computer.origin.computerId}');

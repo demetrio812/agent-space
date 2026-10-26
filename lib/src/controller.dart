@@ -433,12 +433,6 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Map<String, String> get favouriteWorkspaces => {
-    for (final id in layout.favouriteWorkspaces)
-      if (workspaceTarget(id) case final target?)
-        id: '${target.$2.label} · ${computerLabel(target.$1.computerId, origin: target.$1)}',
-  };
-
   Map<String, String> get sidebarWorkspaces {
     final computerId = selectedComputerId;
     final result = workspaces;
@@ -457,7 +451,13 @@ class AppController extends ChangeNotifier {
       );
     }
     result.removeWhere((id, _) => !workspaceIds.contains(id));
-    return result;
+    // Keep catalog order within each section, moving only starred workspaces.
+    return {
+      for (final entry in result.entries)
+        if (isWorkspaceFavourite(entry.key)) entry.key: entry.value,
+      for (final entry in result.entries)
+        if (!isWorkspaceFavourite(entry.key)) entry.key: entry.value,
+    };
   }
 
   String computerLabel(String id, {SessionOrigin? origin}) {

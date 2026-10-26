@@ -94,17 +94,13 @@ class WorkspaceActionsButton extends StatelessWidget {
     required this.app,
     required this.origin,
     required this.workspace,
-    this.menuKey,
   });
   final AppController app;
   final SessionOrigin origin;
   final SessionWorkspace workspace;
-  final Key? menuKey;
   @override
   Widget build(BuildContext context) => PopupMenuButton<String>(
-    key:
-        menuKey ??
-        ValueKey('workspace-menu-${scopedWorkspaceId(origin, workspace.id)}'),
+    key: ValueKey('workspace-menu-${scopedWorkspaceId(origin, workspace.id)}'),
     tooltip: 'Workspace actions',
     padding: EdgeInsets.zero,
     iconSize: 16,

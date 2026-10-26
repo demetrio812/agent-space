@@ -874,27 +874,6 @@ class _Sidebar extends StatelessWidget {
                 app.sessionsForFilter('recent').length,
                 key: const ValueKey('nav-recent'),
               ),
-              if (app.favouriteWorkspaces.isNotEmpty) ...[
-                const Padding(
-                  padding: EdgeInsets.fromLTRB(20, 22, 20, 10),
-                  child: Text(
-                    'Favourite workspaces',
-                    style: TextStyle(color: Color(0xff98a8b9), fontSize: 12),
-                  ),
-                ),
-                for (final workspace in app.favouriteWorkspaces.entries)
-                  _row(
-                    context,
-                    workspace.key,
-                    workspace.value,
-                    Icons.star,
-                    app.sessions
-                        .where((s) => s.workspaceFilterId == workspace.key)
-                        .length,
-                    key: ValueKey('favourite-workspace-${workspace.key}'),
-                    favouriteWorkspace: true,
-                  ),
-              ],
               if (app.computers.isNotEmpty) ...[
                 _row(
                   context,
@@ -1034,7 +1013,6 @@ class _Sidebar extends StatelessWidget {
     Key? key,
     bool dropping = false,
     TabGroup? group,
-    bool favouriteWorkspace = false,
   }) {
     final selected = app.layout.filter == id;
     final workspaceTarget = app.workspaceTarget(id);
@@ -1108,9 +1086,6 @@ class _Sidebar extends StatelessWidget {
               app: app,
               origin: workspaceTarget.$1,
               workspace: workspaceTarget.$2,
-              menuKey: favouriteWorkspace
-                  ? ValueKey('favourite-workspace-menu-$id')
-                  : null,
             ),
           if (group != null) GroupActionsButton(app: app, group: group),
           if (openWindow != null)
@@ -1126,9 +1101,7 @@ class _Sidebar extends StatelessWidget {
     );
     if (workspaceTarget != null) {
       return GestureDetector(
-        key: ValueKey(
-          '${favouriteWorkspace ? 'favourite-workspace' : 'workspace'}-row-$id',
-        ),
+        key: ValueKey('workspace-row-$id'),
         behavior: HitTestBehavior.opaque,
         onSecondaryTapDown: (details) => unawaited(
           showWorkspaceContextMenu(
