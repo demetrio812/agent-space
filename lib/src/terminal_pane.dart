@@ -627,11 +627,7 @@ class _TerminalPaneState extends State<TerminalPane> {
                               : null,
                           sendDraft: () =>
                               unawaited(app.sendDraft(session.key.id)),
-                          preserveFocusWhilePaused:
-                              (!app.isActive ||
-                                  app.connectionState ==
-                                      ConnectionState.stale) &&
-                              state?.uncertain != true,
+                          active: widget.active && widget.visible,
                           sendInput:
                               widget.active &&
                                   widget.visible &&
@@ -868,7 +864,7 @@ class TerminalSurface extends StatefulWidget {
     this.forwardMouseClicks = false,
     this.sendInput,
     this.sendDraft,
-    this.preserveFocusWhilePaused = false,
+    this.active = true,
     this.autofocus = false,
     this.showMobileControls = false,
     this.mobileStatus,
@@ -888,7 +884,7 @@ class TerminalSurface extends StatefulWidget {
   final VoidCallback? onDictate;
   final void Function(TerminalInput)? sendInput;
   final VoidCallback? sendDraft;
-  final bool preserveFocusWhilePaused;
+  final bool active;
   @override
   State<TerminalSurface> createState() => _TerminalSurfaceState();
 }
@@ -1052,7 +1048,7 @@ class _TerminalSurfaceState extends State<TerminalSurface> {
   bool _needsInitialFocus = true;
 
   void _focusWhenReady() {
-    if (!widget.autofocus || !_needsInitialFocus || widget.sendInput == null) {
+    if (!widget.autofocus || !_needsInitialFocus || !widget.active) {
       return;
     }
     final id = widget.inputId;
@@ -1060,7 +1056,7 @@ class _TerminalSurfaceState extends State<TerminalSurface> {
       if (!mounted ||
           widget.inputId != id ||
           !widget.autofocus ||
-          widget.sendInput == null ||
+          !widget.active ||
           !_needsInitialFocus ||
           ModalRoute.of(context)?.isCurrent == false) {
         return;
@@ -1114,7 +1110,10 @@ class _TerminalSurfaceState extends State<TerminalSurface> {
         !oldWidget.autofocus && widget.autofocus) {
       _needsInitialFocus = true;
     }
-    if ((widget.sendInput == null && !widget.preserveFocusWhilePaused ||
+    // Connection/input availability controls delivery, not keyboard ownership.
+    // Keep focus (and local copy) through pauses; relinquish it only when this
+    // pane is deactivated or changes sessions.
+    if ((oldWidget.active && !widget.active ||
             oldWidget.inputId != widget.inputId) &&
         focus.hasFocus) {
       focus.unfocus();

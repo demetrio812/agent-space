@@ -328,8 +328,14 @@ class TerminalViewState extends State<TerminalView> {
     return child;
   }
 
+  void requestFocus() => _focusNode.requestFocus();
+
   void requestKeyboard() {
-    _customTextEditKey.currentState?.requestKeyboard();
+    if (widget.hardwareKeyboardOnly) {
+      requestFocus();
+    } else {
+      _customTextEditKey.currentState?.requestKeyboard();
+    }
   }
 
   void closeKeyboard() {
@@ -353,13 +359,8 @@ class TerminalViewState extends State<TerminalView> {
   void _onTapDown(_) {
     if (_controller.selection != null) {
       _controller.clearSelection();
-    } else {
-      if (!widget.hardwareKeyboardOnly) {
-        _customTextEditKey.currentState?.requestKeyboard();
-      } else {
-        _focusNode.requestFocus();
-      }
     }
+    requestKeyboard();
   }
 
   void _onSecondaryTapDown(TapDownDetails details) {

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:xterm/xterm.dart';
 import 'package:agentspace/src/app.dart';
 import 'package:agentspace/src/storage.dart';
 import 'package:agentspace/src/terminal_pane.dart';
@@ -34,6 +35,15 @@ void main() {
         await tester.tap(find.text('Panel 2'));
         await tester.pumpAndSettle();
         expect(app.layout.selectedId, ids[1]);
+        final focusedViews = tester
+            .widgetList<TerminalView>(find.byType(TerminalView))
+            .where((view) => view.focusNode!.hasFocus)
+            .toList();
+        expect(focusedViews, hasLength(1));
+        expect(
+          focusedViews.single.terminal,
+          app.terminals[ids[1]]!.screen.terminal,
+        );
         expect(
           tester
               .widgetList<TerminalSurface>(find.byType(TerminalSurface))

@@ -157,10 +157,12 @@ class _TerminalGestureHandlerState extends State<TerminalGestureHandler> {
   }
 
   void onDoubleTapDown(TapDownDetails details) {
+    terminalView.requestFocus();
     renderTerminal.selectWord(details.localPosition);
   }
 
   void onLongPressStart(LongPressStartDetails details) {
+    terminalView.requestFocus();
     _lastLongPressStartDetails = details;
     renderTerminal.selectWord(details.localPosition);
   }
@@ -175,6 +177,9 @@ class _TerminalGestureHandlerState extends State<TerminalGestureHandler> {
   // void onLongPressUp() {}
 
   void onDragStart(DragStartDetails details) {
+    // A fast drag can win before tap-down fires. Selection must own keyboard
+    // focus so copy shortcuts reach this terminal rather than another editor.
+    terminalView.requestFocus();
     _lastDragStartDetails = details;
 
     details.kind == PointerDeviceKind.mouse
