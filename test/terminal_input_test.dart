@@ -1077,6 +1077,8 @@ void main() {
   testWidgets('input uncertainty remains visible with the composer hidden', (
     tester,
   ) async {
+    await tester.binding.setSurfaceSize(const Size(2000, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
     final backend = InputFixture()..uncertain = true;
     final app = AppController(
       snapshot: AppSnapshot(),
@@ -1096,7 +1098,45 @@ void main() {
         find.textContaining('Terminal input delivery is uncertain'),
         findsOneWidget,
       );
-      expect(find.text('I’ve checked'), findsOneWidget);
+      final warning = find.textContaining(
+        'Terminal input delivery is uncertain',
+      );
+      final resume = find.text('I’ve checked');
+      expect(resume, findsOneWidget);
+      expect(
+        tester.getTopLeft(resume).dx - tester.getTopLeft(warning).dx,
+        lessThan(1000),
+        reason: 'Recovery belongs beside the warning on wide windows.',
+      );
+      Focus.of(tester.element(resume)).requestFocus();
+      await tester.pump();
+      backend.uncertain = false;
+      await tester.tap(resume);
+      await tester.pump();
+      await tester.pump();
+      expect(app.layout.uncertainDeliveries, isEmpty);
+      expect(
+        tester
+            .widget<TerminalView>(find.byType(TerminalView))
+            .focusNode!
+            .hasFocus,
+        isTrue,
+      );
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(
+        backend.input.map((event) => event.toJson()),
+        [
+          {
+            'keys': ['up'],
+          },
+          {
+            'keys': ['down'],
+          },
+        ],
+        reason:
+            'Resume accepts new input without replaying the unconfirmed key.',
+      );
     } finally {
       await tester.pump(const Duration(milliseconds: 350));
       await tester.pumpWidget(const SizedBox());

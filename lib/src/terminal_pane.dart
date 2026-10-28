@@ -44,6 +44,28 @@ class _TerminalPaneState extends State<TerminalPane> {
   final draft = TextEditingController();
   final draftFocus = FocusNode();
   final terminalController = TerminalController();
+  final terminalSurfaceKey = GlobalKey<_TerminalSurfaceState>();
+
+  void resumeInput() {
+    final id = widget.session.key.id;
+    widget.app.acknowledgeDelivery(id);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted ||
+          widget.session.key.id != id ||
+          !widget.active ||
+          !widget.visible ||
+          !widget.app.canSendTerminalInput(id) ||
+          ModalRoute.of(context)?.isCurrent == false) {
+        return;
+      }
+      if (composerOpen) {
+        draftFocus.requestFocus();
+      } else {
+        terminalSurfaceKey.currentState?.focus.requestFocus();
+      }
+    });
+  }
+
   Terminal? lastTerminal;
   bool composerOpen = false;
   bool dictationOpen = false;
@@ -575,6 +597,7 @@ class _TerminalPaneState extends State<TerminalPane> {
                             ? () => app.select(session.key.id)
                             : null,
                         child: TerminalSurface(
+                          key: terminalSurfaceKey,
                           autofocus:
                               widget.active && !composerOpen && !dictationOpen,
                           onDictate: () => unawaited(dictate()),
@@ -698,6 +721,7 @@ class _TerminalPaneState extends State<TerminalPane> {
                   id: session.key.id,
                   state: state!,
                   short: short,
+                  onResume: resumeInput,
                 ),
               ),
             if (composerOpen)
@@ -715,35 +739,12 @@ class _TerminalPaneState extends State<TerminalPane> {
                     if (state?.message != null && state?.uncertain == true)
                       Padding(
                         padding: const EdgeInsets.only(bottom: 7),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                state!.message!,
-                                maxLines: short ? 1 : null,
-                                overflow: short ? TextOverflow.ellipsis : null,
-                                style: TextStyle(
-                                  color: state.uncertain
-                                      ? context.attention
-                                      : context.mutedInk,
-                                  fontSize: 11,
-                                ),
-                              ),
-                            ),
-                            if (state.uncertain)
-                              TextButton(
-                                onPressed:
-                                    app.terminalInputPending(session.key.id)
-                                    ? null
-                                    : () => app.acknowledgeDelivery(
-                                        session.key.id,
-                                      ),
-                                child: const Text(
-                                  'I’ve checked',
-                                  style: TextStyle(fontSize: 11),
-                                ),
-                              ),
-                          ],
+                        child: _InputNotice(
+                          app: app,
+                          id: session.key.id,
+                          state: state!,
+                          short: short,
+                          onResume: resumeInput,
                         ),
                       ),
                     Row(
@@ -825,15 +826,17 @@ class _InputNotice extends StatelessWidget {
     required this.id,
     required this.state,
     required this.short,
+    required this.onResume,
   });
   final AppController app;
   final String id;
   final SendState state;
   final bool short;
+  final VoidCallback onResume;
   @override
   Widget build(BuildContext context) => Row(
     children: [
-      Expanded(
+      Flexible(
         child: Text(
           state.message!,
           maxLines: short ? 2 : null,
@@ -842,9 +845,7 @@ class _InputNotice extends StatelessWidget {
       ),
       if (state.uncertain)
         TextButton(
-          onPressed: app.terminalInputPending(id)
-              ? null
-              : () => app.acknowledgeDelivery(id),
+          onPressed: app.terminalInputPending(id) ? null : onResume,
           child: const Text('I’ve checked', style: TextStyle(fontSize: 11)),
         ),
     ],
