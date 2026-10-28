@@ -91,6 +91,7 @@ class TerminalPainter {
     Offset offset, {
     required TerminalCursorType cursorType,
     bool hasFocus = true,
+    CellData? cell,
   }) {
     final paint = Paint()
       ..color = _theme.cursor
@@ -106,6 +107,23 @@ class TerminalPainter {
       case TerminalCursorType.block:
         paint.style = PaintingStyle.fill;
         canvas.drawRect(offset & _cellSize, paint);
+        if (cell != null) {
+          // The cursor is painted after the line. Redraw its glyph in contrast
+          // instead of hiding it; faint/inverse styling must not erase it.
+          final cursorCell = CellData(
+            foreground: CellColor.rgb |
+                (_theme.cursor.computeLuminance() > 0.179
+                    ? 0x000000
+                    : 0xffffff),
+            background: cell.background,
+            flags: cell.flags & ~(CellFlags.faint | CellFlags.inverse),
+            content: cell.content,
+          );
+          canvas.save();
+          canvas.clipRect(offset & _cellSize);
+          paintCellForeground(canvas, offset, cursorCell);
+          canvas.restore();
+        }
         return;
       case TerminalCursorType.underline:
         return canvas.drawLine(

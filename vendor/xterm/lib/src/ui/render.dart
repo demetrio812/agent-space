@@ -6,6 +6,7 @@ import 'package:flutter/widgets.dart';
 import 'package:xterm/src/core/buffer/cell_offset.dart';
 import 'package:xterm/src/core/buffer/range.dart';
 import 'package:xterm/src/core/buffer/segment.dart';
+import 'package:xterm/src/core/cell.dart';
 import 'package:xterm/src/core/mouse/button.dart';
 import 'package:xterm/src/core/mouse/button_state.dart';
 import 'package:xterm/src/terminal.dart';
@@ -428,11 +429,15 @@ class RenderTerminal extends RenderBox with RelayoutWhenSystemFontsChangeMixin {
       }
 
       if (_shouldShowCursor) {
+        final cursorCell = CellData.empty();
+        lines[_terminal.buffer.absoluteCursorY]
+            .getCellData(_terminal.buffer.cursorX, cursorCell);
         _painter.paintCursor(
           canvas,
           offset + cursorOffset,
           cursorType: _cursorType,
           hasFocus: _focusNode.hasFocus,
+          cell: _isComposingText ? null : cursorCell,
         );
       }
     }
