@@ -822,6 +822,13 @@ class AppController extends ChangeNotifier {
     }
     search = '';
     _previewTargets.clear();
+    // Skip a one-tile overview on explicit navigation only. Refreshes and
+    // searches must not reopen a terminal after Back or steal editor focus.
+    final rows = sessionsForFilter(filter);
+    if (!hasGroupSplit && rows.length == 1 && rows.single.available) {
+      select(rows.single.key.id);
+      return;
+    }
     _syncStreams();
     _scheduleSave();
     notifyListeners();

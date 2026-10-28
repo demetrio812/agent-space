@@ -144,7 +144,7 @@ void main() {
       await tester.tap(otherComputer);
       await tester.pumpAndSettle();
       expect(app.selectedComputerId, other.computerId);
-      expect(app.selectedSession, isNull);
+      expect(app.selectedSession?.key, other.key);
       expect(workspace, findsNothing);
       expect(
         find.byKey(ValueKey('workspace-${other.workspaceFilterId}')),
@@ -171,6 +171,10 @@ void main() {
       await tester.tap(overviewWorkspace);
       await tester.pumpAndSettle();
       expect(app.layout.filter, other.workspaceFilterId);
+      expect(app.selectedSession?.key, other.key);
+      // Opening the terminal now schedules its viewport resize debounce.
+      await tester.pump(const Duration(milliseconds: 200));
+      await tester.pumpAndSettle();
       await openSidebar();
       expect(
         find.byKey(ValueKey('workspace-${other.workspaceFilterId}')),

@@ -129,6 +129,67 @@ void main() {
     await app.shutdown();
     await dir.delete(recursive: true);
   });
+  for (final destination in [
+    'workspace',
+    'computer',
+    'group',
+    'favourites',
+    'all',
+    'recent',
+  ]) {
+    test(
+      'navigating to a single-session $destination opens it and Back stays in the overview',
+      () async {
+        final session = backend.sessions.first;
+        backend.sessions = [session];
+        await app.refresh();
+        final group = app.createGroup('Single', [session.key.id]);
+        app.toggleFavourite(session);
+        app.select(session.key.id);
+        app.overview();
+        final filter = switch (destination) {
+          'workspace' => session.workspaceFilterId,
+          'computer' => 'computer:${session.computerId}',
+          'group' => 'group:${group.id}',
+          _ => destination,
+        };
+        app.setSearch('unrelated old query');
+        app.setFilter(filter);
+        expect(app.layout.selectedId, session.key.id);
+        expect(app.layout.filter, filter);
+        expect(app.layout.recentSessions.first, session.key.id);
+        expect(app.layout.retained[session.key.id], session);
+        expect(app.search, isEmpty);
+        app.overview();
+        await app.refresh();
+        expect(app.layout.selectedId, isNull);
+        expect(app.layout.filter, filter);
+        // An explicit navigation to the same place can open it again.
+        app.setFilter(filter);
+        expect(app.layout.selectedId, session.key.id);
+      },
+    );
+  }
+
+  test(
+    'empty, multiple and search-narrowed session lists remain overviews',
+    () async {
+      app.setFilter('all');
+      expect(app.layout.selectedId, isNull);
+      app.setSearch('Task one');
+      expect(app.visibleSessions, hasLength(1));
+      expect(app.layout.selectedId, isNull);
+      app.setFilter('missing-workspace');
+      expect(app.layout.selectedId, isNull);
+      app.toggleFavourite(backend.sessions.first);
+      backend.sessions = [];
+      await app.refresh();
+      app.setFilter('favourites');
+      expect(app.visibleSessions, hasLength(1));
+      expect(app.layout.selectedId, isNull);
+    },
+  );
+
   test(
     'favourite filter updates immediately and keeps offline placeholders',
     () async {

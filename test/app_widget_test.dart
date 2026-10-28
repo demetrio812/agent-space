@@ -626,9 +626,11 @@ void main() {
         await tester.tap(find.text('Favourites').last);
         await tester.pumpAndSettle();
         expect(app.visibleSessions.single.key.id, session.key.id);
-        await tester.tap(find.byKey(ValueKey('tile-${session.key.id}')));
-        await tester.pump(const Duration(milliseconds: 100));
+        expect(app.selectedSession?.key.id, session.key.id);
         expect(find.byType(TerminalView), findsOneWidget);
+        await tester.tap(find.byKey(const ValueKey('show-overview')));
+        await tester.pumpAndSettle();
+        expect(find.byKey(ValueKey('tile-${session.key.id}')), findsOneWidget);
         expect(tester.takeException(), isNull);
       } finally {
         await closeApp(tester, app);
