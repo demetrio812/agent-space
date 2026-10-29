@@ -904,22 +904,40 @@ class _Sidebar extends StatelessWidget {
                     style: TextStyle(color: Color(0xff98a8b9), fontSize: 12),
                   ),
                 ),
-              ...app.layout.groups.map(
-                (g) => DragTarget<String>(
-                  onWillAcceptWithDetails: (details) =>
-                      app.sessionById(details.data) != null,
-                  onAcceptWithDetails: (details) =>
-                      app.moveToGroup(details.data, g.id),
-                  builder: (context, candidates, _) => _row(
-                    context,
-                    'group:${g.id}',
-                    candidates.isEmpty ? g.name : 'Drop to add a tab',
-                    Icons.tab_outlined,
-                    g.sessions.length,
-                    dropping: candidates.isNotEmpty,
-                    group: g,
-                  ),
-                ),
+              ReorderableListView(
+                key: const ValueKey('sidebar-groups'),
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                padding: EdgeInsets.zero,
+                buildDefaultDragHandles: false,
+                onReorderItem: app.reorderGroup,
+                children: [
+                  for (var index = 0; index < app.layout.groups.length; index++)
+                    DragTarget<String>(
+                      key: ValueKey(
+                        'reorder-group-${app.layout.groups[index].id}',
+                      ),
+                      onWillAcceptWithDetails: (details) =>
+                          app.sessionById(details.data) != null,
+                      onAcceptWithDetails: (details) => app.moveToGroup(
+                        details.data,
+                        app.layout.groups[index].id,
+                      ),
+                      builder: (context, candidates, _) {
+                        final group = app.layout.groups[index];
+                        return _row(
+                          context,
+                          'group:${group.id}',
+                          candidates.isEmpty ? group.name : 'Drop to add a tab',
+                          Icons.tab_outlined,
+                          group.sessions.length,
+                          dropping: candidates.isNotEmpty,
+                          group: group,
+                          groupIndex: index,
+                        );
+                      },
+                    ),
+                ],
               ),
             ],
           ),
@@ -1013,6 +1031,7 @@ class _Sidebar extends StatelessWidget {
     Key? key,
     bool dropping = false,
     TabGroup? group,
+    int? groupIndex,
   }) {
     final selected = app.layout.filter == id;
     final workspaceTarget = app.workspaceTarget(id);
@@ -1086,6 +1105,22 @@ class _Sidebar extends StatelessWidget {
               app: app,
               origin: workspaceTarget.$1,
               workspace: workspaceTarget.$2,
+            ),
+          if (groupIndex != null)
+            ReorderableDragStartListener(
+              key: ValueKey('group-drag-${group!.id}'),
+              index: groupIndex,
+              child: const Tooltip(
+                message: 'Drag to reorder group',
+                child: Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 5, vertical: 12),
+                  child: Icon(
+                    Icons.drag_indicator,
+                    size: 16,
+                    color: Color(0xff8296ab),
+                  ),
+                ),
+              ),
             ),
           if (group != null) GroupActionsButton(app: app, group: group),
           if (openWindow != null)

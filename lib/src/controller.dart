@@ -2166,6 +2166,20 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
+  void reorderGroup(int oldIndex, int newIndex) {
+    final groups = layout.groups;
+    if (oldIndex < 0 ||
+        oldIndex >= groups.length ||
+        newIndex < 0 ||
+        newIndex >= groups.length) {
+      return;
+    }
+    if (newIndex == oldIndex) return;
+    groups.insert(newIndex, groups.removeAt(oldIndex));
+    _scheduleSave();
+    notifyListeners();
+  }
+
   void deleteGroup(String groupId) {
     layout.groups.removeWhere((g) => g.id == groupId);
     if (layout.filter == 'group:$groupId') setFilter('all');

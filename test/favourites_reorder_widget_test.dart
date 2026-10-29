@@ -131,7 +131,11 @@ void main() {
       app.select(id);
       await tester.pumpWidget(AgentSpaceApp(controller: app));
       await tester.pumpAndSettle();
-      final strip = find.byType(ReorderableListView);
+      final strip = find.byWidgetPredicate(
+        (widget) =>
+            widget is ReorderableListView &&
+            widget.scrollDirection == Axis.horizontal,
+      );
       final state = tester.state<ScrollableState>(
         find.descendant(of: strip, matching: find.byType(Scrollable)).first,
       );
@@ -269,7 +273,13 @@ void main() {
           tester,
           kind == PointerDeviceKind.mouse ? first : second,
           kind == PointerDeviceKind.mouse
-              ? tester.getTopRight(find.byType(ReorderableListView)) +
+              ? tester.getTopRight(
+                      find.byWidgetPredicate(
+                        (widget) =>
+                            widget is ReorderableListView &&
+                            widget.scrollDirection == Axis.horizontal,
+                      ),
+                    ) +
                     const Offset(-12, 20)
               : tester.getCenter(first) + const Offset(48, 0),
           kind,
