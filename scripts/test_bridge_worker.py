@@ -188,6 +188,19 @@ class WorkerTests(unittest.TestCase):
             calls=[json.loads(line) for line in (self.root/'cli-calls').read_text().splitlines()]
             self.assertFalse(any('--takeover' in call for call in calls))
 
+    def test_takeover_is_explicit_and_only_valid_for_control(self):
+        with WorkerHarness(self.root,'streams') as h:
+            for payload in [
+                {'mode':'preview','cols':90,'rows':30,'takeover':True},
+                {'mode':'viewport','cols':90,'rows':30,'takeover':'true'},
+            ]:
+                self.assertFalse(h.request('observe',payload)['ok'])
+            result=h.request('observe',{'mode':'viewport','cols':90,'rows':30,'takeover':True})
+            self.assertTrue(result['ok'])
+            h.wait_frame(result['result']['subscription'])
+            calls=[json.loads(line) for line in (self.root/'cli-calls').read_text().splitlines()]
+            self.assertEqual(len([c for c in calls if '--takeover' in c]),1)
+
     def test_attached_scroll_writes_fixed_control_only_to_live_viewport(self):
         from types import SimpleNamespace
         from bridge.worker import LocalWorker

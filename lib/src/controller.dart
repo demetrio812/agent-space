@@ -27,6 +27,7 @@ class TerminalEntry {
   int attempts = 0, generation = 0;
   int? viewportCols, viewportRows;
   bool viewportControl = false;
+  bool takeoverNext = false;
   Timer? viewportTimer;
   DateTime lastUsed = DateTime.now();
 }
@@ -1008,11 +1009,18 @@ class AppController extends ChangeNotifier {
       _renderSoon();
     }
 
-    final stream =
-        entry.viewportControl &&
-            _ownsViewport(id) &&
-            session.terminalViewportEnabled &&
-            backend is TerminalViewportBackend
+    final takeover = entry.takeoverNext;
+    entry.takeoverNext = false;
+    final stream = takeover && backend is TerminalTakeoverBackend
+        ? (backend as TerminalTakeoverBackend).takeControl(
+            session,
+            entry.viewportCols!,
+            entry.viewportRows!,
+          )
+        : entry.viewportControl &&
+              _ownsViewport(id) &&
+              session.terminalViewportEnabled &&
+              backend is TerminalViewportBackend
         ? (backend as TerminalViewportBackend).observeViewport(
             session,
             entry.viewportCols!,
@@ -1143,6 +1151,35 @@ class AppController extends ChangeNotifier {
         }
       }
     });
+  }
+
+  bool canTakeTerminalControl(String id) {
+    final session = sessionById(id), backend = _backend;
+    return !_disposed &&
+        _active &&
+        layout.selectedId == id &&
+        session != null &&
+        session.available &&
+        terminals[id]?.message.contains('already has an attached client') ==
+            true &&
+        backend is TerminalTakeoverBackend &&
+        (backend as TerminalTakeoverBackend).canTakeControl(session);
+  }
+
+  Future<void> takeTerminalControl(String id) async {
+    if (!canTakeTerminalControl(id)) return;
+    _cancelTerminalInput();
+    final entry = terminals[id]!;
+    await _stopEntry(entry);
+    if (!canTakeTerminalControl(id)) return;
+    entry.viewportCols ??= 120;
+    entry.viewportRows ??= 40;
+    entry.viewportControl = true;
+    entry.takeoverNext = true;
+    entry.state = TerminalState.queued;
+    entry.attempts = 0;
+    _syncStreams();
+    if (!_disposed) notifyListeners();
   }
 
   Future<void> reconnectTerminal(String id) async {

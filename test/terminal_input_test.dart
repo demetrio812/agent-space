@@ -11,7 +11,7 @@ import 'package:agentspace/src/models.dart';
 import 'package:agentspace/src/protocol.dart';
 import 'package:agentspace/src/storage.dart';
 import 'package:agentspace/src/terminal_pane.dart';
-import 'package:xterm/xterm.dart';
+import 'package:xterm/xterm.dart' hide TerminalState;
 import 'package:xterm/src/ui/custom_text_edit.dart';
 
 class InputFixture implements SessionBackend, TerminalInputBackend {
@@ -83,6 +83,40 @@ class InputFixture implements SessionBackend, TerminalInputBackend {
   Future<void> close() async {}
 }
 
+class OccupiedFixture extends InputFixture
+    implements TerminalViewportBackend, TerminalTakeoverBackend {
+  int takeovers = 0;
+  final _occupiedSession = SessionInfo(
+    key: const SessionKey('demo', 'demo', 'server', 't1'),
+    paneId: 'p1',
+    title: 'Occupied terminal',
+    project: 'fixture',
+    agent: 'fixture',
+    status: SessionStatus.idle,
+    inputEnabled: true,
+    terminalInputEnabled: true,
+    terminalViewportEnabled: true,
+  );
+  @override
+  SessionInfo get session => _occupiedSession;
+  @override
+  Stream<ObserveEvent> observeViewport(SessionInfo s, int cols, int rows) =>
+      Stream.value(
+        TerminalClosed(
+          'terminal attach failed: terminal t1 already has an attached client; retry with --takeover',
+        ),
+      );
+  @override
+  Future<void> resizeViewport(SessionInfo s, int cols, int rows) async {}
+  @override
+  bool canTakeControl(SessionInfo s) => true;
+  @override
+  Stream<ObserveEvent> takeControl(SessionInfo s, int cols, int rows) {
+    takeovers++;
+    return super.observe(s);
+  }
+}
+
 class WidgetStore extends LayoutStore {
   WidgetStore() : super('unused');
   @override
@@ -90,6 +124,77 @@ class WidgetStore extends LayoutStore {
 }
 
 void main() {
+  for (final mobile in [false, true]) {
+    testWidgets(
+      'occupied terminal needs explicit one-shot takeover, mobile $mobile',
+      (tester) async {
+        await tester.binding.setSurfaceSize(
+          mobile ? const Size(390, 844) : const Size(1200, 800),
+        );
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        final backend = OccupiedFixture();
+        final app = AppController(
+          snapshot: AppSnapshot(),
+          store: WidgetStore(),
+          backendFactory: (_) => backend,
+        );
+        try {
+          await app.start(polling: false);
+          app.select(backend.session.key.id);
+          await tester.pumpWidget(
+            AgentSpaceApp(controller: app, desktop: !mobile),
+          );
+          await tester.pump(const Duration(milliseconds: 800));
+          await tester.pump(const Duration(milliseconds: 400));
+          expect(app.canTakeTerminalControl(backend.session.key.id), isTrue);
+          await tester.runAsync(
+            () => app.reconnectTerminal(backend.session.key.id),
+          );
+          await tester.pump(const Duration(milliseconds: 800));
+          expect(backend.takeovers, 0);
+          Future<void> openTakeover() async {
+            if (mobile) {
+              await tester.tap(find.byTooltip('Terminal status & more'));
+              await tester.pumpAndSettle();
+            }
+            await tester.tap(find.text('Take control').first);
+            await tester.pumpAndSettle();
+          }
+
+          await openTakeover();
+          expect(find.text('Take control of this terminal?'), findsOneWidget);
+          await tester.tap(find.text('Cancel'));
+          await tester.pumpAndSettle();
+          expect(backend.takeovers, 0);
+          await openTakeover();
+          await tester.tap(find.widgetWithText(FilledButton, 'Take control'));
+          await tester.pumpAndSettle();
+          await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 20)),
+          );
+          await tester.pumpAndSettle();
+          expect(backend.takeovers, 1);
+          expect(
+            app.terminals[backend.session.key.id]!.state,
+            TerminalState.live,
+          );
+          expect(backend.input, isEmpty);
+          // A later reconnect must never silently take over again.
+          await tester.runAsync(
+            () => app.reconnectTerminal(backend.session.key.id),
+          );
+          await tester.pump(const Duration(milliseconds: 800));
+          expect(backend.takeovers, 1);
+          expect(app.canTakeTerminalControl(backend.session.key.id), isTrue);
+        } finally {
+          await tester.pumpWidget(const SizedBox());
+          await tester.runAsync(app.shutdown);
+          await tester.pump();
+        }
+      },
+    );
+  }
+
   for (final platform in [TargetPlatform.macOS, TargetPlatform.iOS]) {
     testWidgets('opening and switching sessions focuses typing on $platform', (
       tester,

@@ -364,7 +364,11 @@ class PersistentBridge {
     Map<String, dynamic> route, {
     int? cols,
     int? rows,
+    bool takeover = false,
   }) {
+    if (takeover && cols == null) {
+      throw ArgumentError('Takeover requires a viewport.');
+    }
     if ((cols == null) != (rows == null) ||
         (cols != null && !_validViewport(cols, rows!))) {
       throw ArgumentError('Invalid terminal dimensions.');
@@ -382,6 +386,7 @@ class PersistentBridge {
               'observe',
               {
                 'mode': cols == null ? 'preview' : 'viewport',
+                if (takeover) 'takeover': true,
                 'cols': view.cols ?? 120,
                 'rows': view.rows ?? 40,
               },

@@ -154,6 +154,33 @@ class _TerminalPaneState extends State<TerminalPane> {
     super.dispose();
   }
 
+  Future<void> takeControl() async {
+    final id = widget.session.key.id;
+    if (!widget.app.canTakeTerminalControl(id)) return;
+    final approved = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Take control of this terminal?'),
+        content: const Text(
+          'Herdr reports another attached client. Taking control disconnects that client. The session keeps running.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Take control'),
+          ),
+        ],
+      ),
+    );
+    if (approved == true && mounted && widget.session.key.id == id) {
+      await widget.app.takeTerminalControl(id);
+    }
+  }
+
   Future<void> copyTerminal() async {
     final screen = widget.app.terminals[widget.session.key.id]?.screen;
     if (screen?.terminal == null) return;
@@ -581,9 +608,15 @@ class _TerminalPaneState extends State<TerminalPane> {
                               if (session.available)
                                 TextButton(
                                   onPressed: () => unawaited(
-                                    app.reconnectTerminal(session.key.id),
+                                    app.canTakeTerminalControl(session.key.id)
+                                        ? takeControl()
+                                        : app.reconnectTerminal(session.key.id),
                                   ),
-                                  child: const Text('Reconnect'),
+                                  child: Text(
+                                    app.canTakeTerminalControl(session.key.id)
+                                        ? 'Take control'
+                                        : 'Reconnect',
+                                  ),
                                 ),
                             ],
                           ),
@@ -621,8 +654,14 @@ class _TerminalPaneState extends State<TerminalPane> {
                                 app.store.warning != null ||
                                 entry.state != TerminalState.live ||
                                 !connectionReady,
+                            reconnectLabel:
+                                app.canTakeTerminalControl(session.key.id)
+                                ? 'Take control'
+                                : 'Reconnect terminal',
                             onReconnect: () => unawaited(
-                              connectionReady
+                              app.canTakeTerminalControl(session.key.id)
+                                  ? takeControl()
+                                  : connectionReady
                                   ? app.reconnectTerminal(session.key.id)
                                   : app.reconnect(),
                             ),
@@ -706,6 +745,25 @@ class _TerminalPaneState extends State<TerminalPane> {
                         color: Color(0xff92a7b8),
                         fontSize: 10,
                       ),
+                    ),
+                  ],
+                ),
+              ),
+            if (!widget.mobileControls &&
+                terminal != null &&
+                app.canTakeTerminalControl(session.key.id))
+              Padding(
+                padding: const EdgeInsets.all(8),
+                child: Row(
+                  children: [
+                    const Flexible(
+                      child: Text(
+                        'Another client is attached to this terminal.',
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: takeControl,
+                      child: const Text('Take control'),
                     ),
                   ],
                 ),

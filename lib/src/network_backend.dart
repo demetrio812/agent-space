@@ -27,6 +27,7 @@ class NetworkHerdrBackend
         SessionBackend,
         TerminalInputBackend,
         TerminalViewportBackend,
+        TerminalTakeoverBackend,
         TerminalScrollBackend,
         NetworkCatalogBackend,
         SessionManagementBackend,
@@ -559,6 +560,26 @@ class NetworkHerdrBackend
       current.origin!.route(current.key.terminal, current.paneId),
       cols: cols,
       rows: rows,
+    );
+  }
+
+  @override
+  bool canTakeControl(SessionInfo session) =>
+      !_closed &&
+      _bridge != null &&
+      session.available &&
+      session.inputEnabled &&
+      session.terminalViewportEnabled;
+
+  @override
+  Stream<ObserveEvent> takeControl(SessionInfo session, int cols, int rows) {
+    if (!canTakeControl(session)) throw SessionUnavailable();
+    final current = _current(session, input: true);
+    return _bridge!.observe(
+      current.origin!.route(current.key.terminal, current.paneId),
+      cols: cols,
+      rows: rows,
+      takeover: true,
     );
   }
 

@@ -284,13 +284,30 @@ class GatewayTests(unittest.TestCase):
         rows=[json.loads(line) for line in output.getvalue().splitlines()]
         self.assertEqual(len({r['value']['machine'] for r in rows if r.get('event')=='computer'}),65)
 
+    def test_explicit_takeover_is_forwarded_only_to_the_selected_peer(self):
+        node=self.machine(1); captured=[]
+        original=self.connector.open
+        def open_peer(machine,lane):
+            peer=original(machine,lane)
+            def request(row,on_event=None,timeout=6):
+                captured.append((machine.id,row))
+                return {'subscription':'500'}
+            peer.request=request
+            return peer
+        self.connector.open=open_peer
+        worker=GatewayWorker(worker_config(self.gateway,'streams'),io.BytesIO(),registry=self.registry,connector=self.connector)
+        self.addCleanup(worker.close)
+        payload={'mode':'viewport','cols':80,'rows':25,'takeover':True}
+        worker.operation({'id':'1','op':'observe','route':self.route(node),'payload':payload})
+        self.assertEqual([(machine,row['payload']) for machine,row in captured],[(node.id,payload)])
+
     def test_read_only_gateway_rejects_peer_viewport_before_startup(self):
         node=self.machine(1)
         config=worker_config(self.gateway,'streams'); config['allowInput']=False
         worker=GatewayWorker(config,io.BytesIO(),registry=self.registry,connector=self.connector)
         self.addCleanup(worker.close)
         with self.assertRaises(BridgeRejected) as error:
-            worker.operation({'id':'1','op':'observe','route':self.route(node),'payload':{'mode':'viewport','cols':80,'rows':25}})
+            worker.operation({'id':'1','op':'observe','route':self.route(node),'payload':{'mode':'viewport','cols':80,'rows':25,'takeover':True}})
         self.assertEqual(error.exception.code,'unsupported')
         self.assertEqual(self.connector.started,[])
 

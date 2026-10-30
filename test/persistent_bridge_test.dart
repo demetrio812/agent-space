@@ -9,6 +9,28 @@ import 'fixtures/fake_bridge.dart';
 
 void main() {
   test(
+    'takeover is carried only on the explicitly requested viewport',
+    () async {
+      final wire = FakeBridge();
+      final bridge = PersistentBridge(wire.open);
+      addTearDown(bridge.close);
+      for (final takeover in [false, true, false]) {
+        final sub = bridge
+            .observe(fixtureRoute, cols: 90, rows: 30, takeover: takeover)
+            .listen((_) {});
+        await bridge.request(BridgeLane.streams, 'health', {});
+        final request = wire.requests.lastWhere((r) => r['op'] == 'observe');
+        expect((request['payload'] as Map)['takeover'], takeover ? true : null);
+        await sub.cancel();
+      }
+      expect(
+        () => bridge.observe(fixtureRoute, takeover: true),
+        throwsArgumentError,
+      );
+    },
+  );
+
+  test(
     'late frame after cancelled view does not retire another stream lane',
     () async {
       final wire = FakeBridge();

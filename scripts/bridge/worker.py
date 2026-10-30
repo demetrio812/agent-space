@@ -272,10 +272,12 @@ class LocalWorker:
 
     def _start_stream(self, row):
         payload, route = row['payload'], row.get('route')
-        if (set(payload)-{'mode','cols','rows'} or payload.get('mode') not in ('preview','viewport')
+        if (set(payload)-{'mode','cols','rows','takeover'} or payload.get('mode') not in ('preview','viewport')
                 or not valid_viewport(payload.get('cols',120),payload.get('rows',40))):
             raise BridgeRejected('invalid_request')
         mode = payload['mode']
+        if type(payload.get('takeover',False)) is not bool or (payload.get('takeover',False) and mode!='viewport'):
+            raise BridgeRejected('invalid_request')
         if mode == 'viewport' and not self.config.get('allowInput',True): raise BridgeRejected('unsupported')
         self.api.member(route)
         cols, rows = payload.get('cols',120), payload.get('rows',40)
@@ -289,6 +291,7 @@ class LocalWorker:
             except (BridgeRejected, TypeError, AttributeError): pass
         args = [self.config['herdr'],'terminal','session','control' if mode=='viewport' else 'observe',
                 route['terminal'],'--cols',str(cols),'--rows',str(rows)]
+        if payload.get('takeover',False): args.append('--takeover')
         env = dict(os.environ, HERDR_SOCKET_PATH=self.config['socket'])
         with self.lock:
             if self.closed.is_set() or row['id'] in self._cancelled: raise BridgeRejected('offline')

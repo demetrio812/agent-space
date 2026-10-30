@@ -47,6 +47,11 @@ abstract interface class TerminalScrollBackend {
   Future<void> scrollTerminal(SessionInfo session, int lines);
 }
 
+abstract interface class TerminalTakeoverBackend {
+  bool canTakeControl(SessionInfo session);
+  Stream<ObserveEvent> takeControl(SessionInfo session, int cols, int rows);
+}
+
 abstract interface class TerminalViewportBackend {
   Stream<ObserveEvent> observeViewport(SessionInfo session, int cols, int rows);
   Future<void> resizeViewport(SessionInfo session, int cols, int rows);
@@ -456,7 +461,9 @@ class LocalHerdrBackend
     TerminalInput input,
   ) async {
     if (input.isPaste) {
-      throw SessionUnavailable('Terminal paste requires a persistent connection.');
+      throw SessionUnavailable(
+        'Terminal paste requires a persistent connection.',
+      );
     }
     if (input.clickCell != null) {
       throw SessionUnavailable(
@@ -953,7 +960,9 @@ class RemoteHerdrBackend
     TerminalInput input,
   ) async {
     if (input.isPaste && _bridge == null) {
-      throw SessionUnavailable('Terminal paste requires a persistent connection.');
+      throw SessionUnavailable(
+        'Terminal paste requires a persistent connection.',
+      );
     }
     if (input.clickCell != null) {
       throw SessionUnavailable(

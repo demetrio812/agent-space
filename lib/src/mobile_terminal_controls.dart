@@ -93,11 +93,13 @@ class MobileTerminalStatusMenu extends StatelessWidget {
     required this.details,
     required this.warning,
     required this.onReconnect,
+    this.reconnectLabel = 'Reconnect terminal',
   });
   final String summary;
   final List<String> details;
   final bool warning;
   final VoidCallback onReconnect;
+  final String reconnectLabel;
 
   @override
   Widget build(BuildContext context) => Semantics(
@@ -197,7 +199,7 @@ class MobileTerminalStatusMenu extends StatelessWidget {
                 TextButton.icon(
                   onPressed: () => Navigator.pop(dialogContext, true),
                   icon: const Icon(Icons.refresh, size: 18),
-                  label: const Text('Reconnect terminal'),
+                  label: Text(reconnectLabel),
                 ),
               ],
             ),
