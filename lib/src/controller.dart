@@ -1155,13 +1155,14 @@ class AppController extends ChangeNotifier {
 
   bool canTakeTerminalControl(String id) {
     final session = sessionById(id), backend = _backend;
+    final message = terminals[id]?.message;
     return !_disposed &&
         _active &&
         layout.selectedId == id &&
         session != null &&
         session.available &&
-        terminals[id]?.message.contains('already has an attached client') ==
-            true &&
+        (message?.contains('already has an attached client') == true ||
+            message == 'terminal attach taken over') &&
         backend is TerminalTakeoverBackend &&
         (backend as TerminalTakeoverBackend).canTakeControl(session);
   }

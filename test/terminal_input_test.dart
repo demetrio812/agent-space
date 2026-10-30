@@ -86,6 +86,7 @@ class InputFixture implements SessionBackend, TerminalInputBackend {
 class OccupiedFixture extends InputFixture
     implements TerminalViewportBackend, TerminalTakeoverBackend {
   int takeovers = 0;
+  StreamController<ObserveEvent>? controlled;
   final _occupiedSession = SessionInfo(
     key: const SessionKey('demo', 'demo', 'server', 't1'),
     paneId: 'p1',
@@ -113,7 +114,21 @@ class OccupiedFixture extends InputFixture
   @override
   Stream<ObserveEvent> takeControl(SessionInfo s, int cols, int rows) {
     takeovers++;
-    return super.observe(s);
+    late StreamController<ObserveEvent> stream;
+    stream = StreamController<ObserveEvent>(
+      onListen: () => stream.add(
+        TerminalFrame(
+          cols,
+          rows,
+          0,
+          true,
+          Uint8List.fromList('fixture'.codeUnits),
+        ),
+      ),
+      onCancel: () => unawaited(stream.close()),
+    );
+    controlled = stream;
+    return stream.stream;
   }
 }
 
@@ -179,12 +194,43 @@ void main() {
             TerminalState.live,
           );
           expect(backend.input, isEmpty);
+          // Herdr notifies the previous controller with a different reason
+          // when another device takes over its live attachment.
+          backend.controlled!.add(TerminalClosed('terminal attach taken over'));
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 400));
+          await tester.pumpAndSettle();
+          expect(app.canSendTerminalInput(backend.session.key.id), isFalse);
+          expect(app.canTakeTerminalControl(backend.session.key.id), isTrue);
+          expect(backend.takeovers, 1);
+          await openTakeover();
+          await tester.tap(find.text('Cancel'));
+          await tester.pumpAndSettle();
+          expect(backend.takeovers, 1);
+          await openTakeover();
+          await tester.tap(find.widgetWithText(FilledButton, 'Take control'));
+          await tester.pumpAndSettle();
+          await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 20)),
+          );
+          await tester.pumpAndSettle();
+          expect(backend.takeovers, 2);
+          expect(
+            app.terminals[backend.session.key.id]!.state,
+            TerminalState.live,
+          );
+          expect(backend.input, isEmpty);
+          backend.controlled!.add(TerminalClosed('terminal exited'));
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 400));
+          await tester.pumpAndSettle();
+          expect(app.canTakeTerminalControl(backend.session.key.id), isFalse);
           // A later reconnect must never silently take over again.
           await tester.runAsync(
             () => app.reconnectTerminal(backend.session.key.id),
           );
           await tester.pump(const Duration(milliseconds: 800));
-          expect(backend.takeovers, 1);
+          expect(backend.takeovers, 2);
           expect(app.canTakeTerminalControl(backend.session.key.id), isTrue);
         } finally {
           await tester.pumpWidget(const SizedBox());
