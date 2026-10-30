@@ -118,6 +118,34 @@ final class BridgeJobTests: XCTestCase {
       XCTAssertThrowsError(try validateBridgeEnvelope(row,configuration:configuration))
     }
   }
+  func testExplicitViewportTakeoverEnvelopeForGatewayAndPeer() throws {
+    let configuration=try config("streams")
+    for machine in ["gateway",String(repeating:"a",count:32)] {
+      let route:[String:Any] = ["machine":machine,"session":"default","targetHash":String(repeating:"a",count:64),"generation":String(repeating:"b",count:64),"terminal":"t1","pane":"p1"]
+      func envelope(_ payload:[String:Any]) -> [String:Any] {
+        ["type":"request","protocol":"agentspace-bridge-v2","nonce":configuration.nonce,"lane":"streams","id":"1","op":"observe","payload":payload,"route":route]
+      }
+      for payload:[String:Any] in [
+        ["mode":"viewport","cols":80,"rows":25],
+        ["mode":"viewport","cols":80,"rows":25,"takeover":true],
+        ["mode":"viewport","cols":80,"rows":25,"takeover":false],
+        ["mode":"preview","cols":80,"rows":25,"takeover":false]
+      ] {
+        XCTAssertNoThrow(try validateBridgeEnvelope(envelope(payload),configuration:configuration))
+      }
+      for payload:[String:Any] in [
+        ["mode":"preview","cols":80,"rows":25,"takeover":true],
+        ["mode":"viewport","cols":80,"rows":25,"takeover":1],
+        ["mode":"viewport","cols":80,"rows":25,"takeover":"true"],
+        ["mode":"viewport","cols":80,"rows":25,"takeover":NSNull()],
+        ["mode":"viewport","cols":80,"rows":25,"takeover":true,"arguments":["--anything"]],
+        ["mode":"viewport","cols":true,"rows":25,"takeover":true]
+      ] {
+        XCTAssertThrowsError(try validateBridgeEnvelope(envelope(payload),configuration:configuration))
+      }
+    }
+  }
+
   func testScrollEnvelopeUsesOnlyBoundedAttachedViewControls() throws {
     let configuration=try config("streams")
     var row:[String:Any]=["type":"request","protocol":"agentspace-bridge-v2","nonce":configuration.nonce,"lane":"streams","id":"1","op":"scroll","payload":["subscription":"7","direction":"up","steps":3]]

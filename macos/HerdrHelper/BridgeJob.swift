@@ -122,7 +122,13 @@ func validateBridgeEnvelope(_ row:[String:Any],configuration:BridgeConfiguration
     guard Set(payload.keys)==Set(["text"]),let text=payload["text"] as? String else { throw HelperFault(message:"Invalid reviewed message.") }
     _=try validateOperation(["pane","run",pane,text])
   case "observe":
-    guard Set(payload.keys)==Set(["mode","cols","rows"]),let mode=payload["mode"] as? String,["preview","viewport"].contains(mode) else { throw HelperFault(message:"Invalid terminal observation.") }
+    let observationFields:Set<String> = ["mode","cols","rows"]
+    guard (Set(payload.keys)==observationFields || Set(payload.keys)==observationFields.union(["takeover"])),
+          let mode=payload["mode"] as? String,["preview","viewport"].contains(mode) else { throw HelperFault(message:"Invalid terminal observation.") }
+    if let value=payload["takeover"] {
+      guard let flag=value as? NSNumber, CFGetTypeID(flag)==CFBooleanGetTypeID(),
+            mode=="viewport" || !flag.boolValue else { throw HelperFault(message:"Invalid terminal takeover.") }
+    }
     try dimensions()
   case "scroll":
     guard Set(payload.keys)==Set(["subscription","direction","steps"]),match(payload["subscription"],#"^[1-9][0-9]{0,15}$"#),
