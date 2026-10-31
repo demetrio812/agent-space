@@ -139,9 +139,8 @@ class _TerminalDropTargetState extends State<TerminalDropTarget> {
   ImageDropState? hidden;
   @override
   Widget build(BuildContext context) {
-    if (kIsWeb || defaultTargetPlatform != TargetPlatform.macOS) {
-      return widget.child;
-    }
+    final supportsDrop =
+        !kIsWeb && defaultTargetPlatform == TargetPlatform.macOS;
     return AnimatedBuilder(
       animation: widget.app,
       builder: (context, _) {
@@ -154,6 +153,109 @@ class _TerminalDropTargetState extends State<TerminalDropTarget> {
             hover ||
             error != null ||
             (state != null && !identical(hidden, state));
+        final content = Stack(
+          fit: StackFit.expand,
+          children: [
+            widget.child,
+            if (hover)
+              IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.primary
+                        .withValues(alpha: .08),
+                    border: Border.all(
+                      color: Theme.of(context).colorScheme.primary,
+                      width: 2,
+                    ),
+                  ),
+                ),
+              ),
+            if (show)
+              Positioned(
+                top: 12,
+                right: 12,
+                left: 12,
+                child: Align(
+                  alignment: Alignment.topRight,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 380),
+                    child: Material(
+                      elevation: 4,
+                      borderRadius: BorderRadius.circular(8),
+                      color: Theme.of(context).colorScheme.surfaceContainerHigh,
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (hover)
+                              Text(
+                                app.canDropImages(id)
+                                    ? 'Drop images to add to this prompt'
+                                    : app.imageDropUnavailableReason(id)!,
+                              ),
+                            if (!hover && state != null && error == null)
+                              Text(
+                                state.busy
+                                    ? '${state.nextIndex + 1}/${state.names.length} · ${state.names[state.nextIndex]}'
+                                    : '${state.nextIndex}/${state.names.length} images added',
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            if (!hover && (error ?? state?.message) != null)
+                              Text(error ?? state!.message!),
+                            if (busy &&
+                                state!.phase == ImageDropPhase.uploading)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 8),
+                                child: LinearProgressIndicator(
+                                  value: state.total == 0
+                                      ? null
+                                      : state.bytesSent / state.total,
+                                ),
+                              ),
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (busy &&
+                                    !(state!.phase ==
+                                            ImageDropPhase.attaching &&
+                                        state.inputDispatched))
+                                  TextButton(
+                                    onPressed: () => app.cancelImageDrop(id),
+                                    child: const Text('Cancel'),
+                                  ),
+                                if (state?.phase == ImageDropPhase.failed &&
+                                    state!.prepared.length ==
+                                        state.names.length &&
+                                    app.canDropImages(id))
+                                  TextButton(
+                                    onPressed: () =>
+                                        unawaited(app.retryImageDrop(id)),
+                                    child: const Text('Retry'),
+                                  ),
+                                if (!busy)
+                                  TextButton(
+                                    onPressed: () => setState(() {
+                                      rejected = false;
+                                      hover = false;
+                                      hidden = state;
+                                    }),
+                                    child: const Text('Dismiss'),
+                                  ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        );
+        if (!supportsDrop) return content;
         return DropTarget(
           enable:
               widget.enabled &&
@@ -162,110 +264,7 @@ class _TerminalDropTargetState extends State<TerminalDropTarget> {
           onDragEntered: (_) => setState(() => hover = true),
           onDragExited: (_) => setState(() => hover = false),
           onDragDone: (details) => unawaited(drop(details)),
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              widget.child,
-              if (hover)
-                IgnorePointer(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.primary
-                          .withValues(alpha: .08),
-                      border: Border.all(
-                        color: Theme.of(context).colorScheme.primary,
-                        width: 2,
-                      ),
-                    ),
-                  ),
-                ),
-              if (show)
-                Positioned(
-                  top: 12,
-                  right: 12,
-                  left: 12,
-                  child: Align(
-                    alignment: Alignment.topRight,
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 380),
-                      child: Material(
-                        elevation: 4,
-                        borderRadius: BorderRadius.circular(8),
-                        color: Theme.of(context)
-                            .colorScheme
-                            .surfaceContainerHigh,
-                        child: Padding(
-                          padding: const EdgeInsets.all(12),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              if (hover)
-                                Text(
-                                  app.canDropImages(id)
-                                      ? 'Drop images to add to this prompt'
-                                      : app.imageDropUnavailableReason(id)!,
-                                ),
-                              if (!hover && state != null && error == null)
-                                Text(
-                                  state.busy
-                                      ? '${state.nextIndex + 1}/${state.names.length} · ${state.names[state.nextIndex]}'
-                                      : '${state.nextIndex}/${state.names.length} images added',
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              if (!hover && (error ?? state?.message) != null)
-                                Text(error ?? state!.message!),
-                              if (busy &&
-                                  state!.phase == ImageDropPhase.uploading)
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 8),
-                                  child: LinearProgressIndicator(
-                                    value: state.total == 0
-                                        ? null
-                                        : state.bytesSent / state.total,
-                                  ),
-                                ),
-                              Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  if (busy &&
-                                      !(state!.phase ==
-                                              ImageDropPhase.attaching &&
-                                          state.inputDispatched))
-                                    TextButton(
-                                      onPressed: () => app.cancelImageDrop(id),
-                                      child: const Text('Cancel'),
-                                    ),
-                                  if (state?.phase == ImageDropPhase.failed &&
-                                      state!.prepared.length ==
-                                          state.names.length &&
-                                      app.canDropImages(id))
-                                    TextButton(
-                                      onPressed: () =>
-                                          unawaited(app.retryImageDrop(id)),
-                                      child: const Text('Retry'),
-                                    ),
-                                  if (!busy)
-                                    TextButton(
-                                      onPressed: () => setState(() {
-                                        rejected = false;
-                                        hover = false;
-                                        hidden = state;
-                                      }),
-                                      child: const Text('Dismiss'),
-                                    ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-            ],
-          ),
+          child: content,
         );
       },
     );

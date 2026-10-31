@@ -104,6 +104,7 @@ class AppController extends ChangeNotifier {
   final terminals = <String, TerminalEntry>{};
   final sendStates = <String, SendState>{};
   final imageDrops = <String, ImageDropState>{};
+  int _imagePickerEpoch = 0;
   final sessionActionStates = <String, SessionActionState>{};
   final externalTargets = <String, Set<String>>{};
   final _previewTargets = <String>[];
@@ -1461,6 +1462,7 @@ class AppController extends ChangeNotifier {
   }
 
   void _cancelTerminalInput() {
+    _imagePickerEpoch++;
     for (final row in imageDrops.entries.toList()) {
       if (row.value.busy) cancelImageDrop(row.key, force: true);
     }
@@ -1666,6 +1668,22 @@ class AppController extends ChangeNotifier {
     }
   }
 
+  Future<void> pickImages(
+    String id,
+    Future<List<ImageSource>> Function() pick,
+  ) async {
+    final target = sessionById(id), generation = _generation;
+    final pickerEpoch = _imagePickerEpoch;
+    if (target == null || !canDropImages(id)) return;
+    final images = await pick();
+    if (images.isEmpty ||
+        pickerEpoch != _imagePickerEpoch ||
+        !dictationTargetIsCurrent(target, generation)) {
+      return;
+    }
+    await dropImages(id, images);
+  }
+
   bool _imageCurrent(String id, ImageDropState state) {
     final current = sessionById(id), before = state.session;
     return !state.cancelled &&
@@ -1737,7 +1755,7 @@ class AppController extends ChangeNotifier {
     imageDrops[id] = state;
     try {
       if (sources.isEmpty || sources.length > 4) {
-        throw const FormatException('Drop up to four images at a time.');
+        throw const FormatException('Add up to four images at a time.');
       }
       notifyListeners();
       for (final source in sources) {

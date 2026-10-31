@@ -2,6 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Choose images to attach to the current terminal prompt.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Dictate messages using your selected transcription provider. Audio is streamed only while you record.</string>
 	<key>NSLocalNetworkUsageDescription</key>

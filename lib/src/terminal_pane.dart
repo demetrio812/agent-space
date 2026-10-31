@@ -12,6 +12,7 @@ import 'package:xterm/xterm.dart' hide TerminalState;
 
 import 'controller.dart';
 import 'mobile_terminal_controls.dart';
+import 'mobile_image_attachment.dart';
 import 'terminal_drop_target.dart';
 import 'models.dart';
 import 'ui_common.dart';
@@ -634,6 +635,21 @@ class _TerminalPaneState extends State<TerminalPane> {
                           autofocus:
                               widget.active && !composerOpen && !dictationOpen,
                           onDictate: () => unawaited(dictate()),
+                          imageAttachment: MobileImageAttachment(
+                            app: app,
+                            sessionId: session.key.id,
+                            onFinished: () {
+                              if (mounted &&
+                                  widget.active &&
+                                  widget.visible &&
+                                  !composerOpen &&
+                                  app.canSendTerminalInput(session.key.id) &&
+                                  ModalRoute.of(context)?.isCurrent == true) {
+                                terminalSurfaceKey.currentState?.focus
+                                    .requestFocus();
+                              }
+                            },
+                          ),
                           showMobileControls:
                               widget.mobileControls &&
                               widget.active &&
@@ -928,6 +944,7 @@ class TerminalSurface extends StatefulWidget {
     this.showMobileControls = false,
     this.mobileStatus,
     this.onDictate,
+    this.imageAttachment,
   });
   final Terminal terminal;
   final TerminalController controller;
@@ -941,6 +958,7 @@ class TerminalSurface extends StatefulWidget {
   final bool showMobileControls;
   final Widget? mobileStatus;
   final VoidCallback? onDictate;
+  final Widget? imageAttachment;
   final void Function(TerminalInput)? sendInput;
   final VoidCallback? sendDraft;
   final bool active;
@@ -1412,6 +1430,7 @@ class _TerminalSurfaceState extends State<TerminalSurface> {
             builder: (keyboardContext) => MobileTerminalKeyBar(
               statusMenu: widget.mobileStatus,
               onDictate: widget.onDictate,
+              imageAttachment: widget.imageAttachment,
               enabled: widget.sendInput != null,
               control: _controlPressed,
               arrows: _arrowsOpen,
