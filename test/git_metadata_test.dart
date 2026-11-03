@@ -40,6 +40,7 @@ void main() {
     expect(s.unavailable().git.prNumber, 42);
   });
   for (final size in [
+    const Size(320, 740),
     const Size(390, 844),
     const Size(844, 390),
     const Size(1200, 800),
@@ -57,6 +58,20 @@ void main() {
         expect(find.byType(GitMetadataView), findsWidgets);
         expect(find.text('feature/navigation'), findsWidgets);
         expect(find.text('#42 · open'), findsWidgets);
+        final git = tester.getRect(find.byType(GitMetadataView).first);
+        expect(
+          tester.getSize(find.byKey(const ValueKey('session-header'))).height,
+          lessThanOrEqualTo(56),
+        );
+        final session = app.selectedSession!;
+        final location =
+            '${app.computerLabel(session.computerId, origin: session.origin)} · ${session.workspaceLabel.isNotEmpty ? session.workspaceLabel : session.project}';
+        final locationRect = tester.getRect(find.text(location).first);
+        expect((git.center.dy - locationRect.center.dy).abs(), lessThan(2));
+        expect(git.left, greaterThan(locationRect.left));
+        final actions = tester.getRect(find.byTooltip('Terminal controls'));
+        expect(git.top, greaterThanOrEqualTo(actions.bottom - 1));
+        expect((git.right - actions.right).abs(), lessThan(3));
         expect(tester.takeException(), isNull);
       } finally {
         await closeApp(tester, app);

@@ -5,8 +5,13 @@ import 'git_metadata.dart';
 import 'ui_common.dart';
 
 class GitMetadataView extends StatelessWidget {
-  const GitMetadataView({super.key, required this.metadata});
+  const GitMetadataView({
+    super.key,
+    required this.metadata,
+    this.compact = false,
+  });
   final GitMetadata metadata;
+  final bool compact;
   @override
   Widget build(BuildContext context) {
     if (metadata.isEmpty) return const SizedBox.shrink();
@@ -59,7 +64,7 @@ class GitMetadataView extends StatelessWidget {
               child: Tooltip(
                 message: metadata.prUrl.isEmpty ? pr : metadata.prUrl,
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  padding: EdgeInsets.symmetric(vertical: compact ? 0 : 4),
                   child: Text(
                     pr,
                     maxLines: 1,

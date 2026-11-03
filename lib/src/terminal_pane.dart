@@ -366,8 +366,12 @@ class _TerminalPaneState extends State<TerminalPane> {
                 ),
               ),
             Container(
-              height: session.git.isEmpty ? 48 : 70,
-              padding: EdgeInsets.symmetric(horizontal: compact ? 8 : 18),
+              key: const ValueKey('session-header'),
+              constraints: const BoxConstraints(minHeight: 48),
+              padding: EdgeInsets.symmetric(
+                horizontal: compact ? 8 : 18,
+                vertical: 2,
+              ),
               color: context.panel,
               child: Row(
                 children: [
@@ -380,200 +384,254 @@ class _TerminalPaneState extends State<TerminalPane> {
                     ),
                   const SizedBox(width: 8),
                   Expanded(
-                    child: Tooltip(
-                      message: [
-                        'Computer: $computer',
-                        'Workspace: $workspace',
-                        if (session.terminalTitle.isNotEmpty &&
-                            session.terminalTitle != session.title)
-                          session.terminalTitle,
-                      ].join('\n'),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            session.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Tooltip(
+                                message: [
+                                  'Computer: $computer',
+                                  'Workspace: $workspace',
+                                  if (session.terminalTitle.isNotEmpty &&
+                                      session.terminalTitle != session.title)
+                                    session.terminalTitle,
+                                ].join('\n'),
+                                child: Text(
+                                  session.title,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
                             ),
-                          ),
-                          Text(
-                            location,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: context.mutedInk,
-                              fontSize: 10,
+                            if (!compact) StatusBadge(session),
+                            if (!compact) const SizedBox(width: 12),
+                            CompactIcon(
+                              app.isFavourite(session.key.id)
+                                  ? Icons.star_rounded
+                                  : Icons.star_outline_rounded,
+                              app.isFavourite(session.key.id)
+                                  ? 'Remove from favourites'
+                                  : 'Add to favourites',
+                              () => app.toggleFavourite(session),
+                              color: app.isFavourite(session.key.id)
+                                  ? const Color(0xffb88123)
+                                  : context.mutedInk,
                             ),
-                          ),
-                          if (!session.git.isEmpty)
-                            GitMetadataView(metadata: session.git),
-                        ],
-                      ),
-                    ),
-                  ),
-                  if (!compact) StatusBadge(session),
-                  if (!compact) const SizedBox(width: 12),
-                  CompactIcon(
-                    app.isFavourite(session.key.id)
-                        ? Icons.star_rounded
-                        : Icons.star_outline_rounded,
-                    app.isFavourite(session.key.id)
-                        ? 'Remove from favourites'
-                        : 'Add to favourites',
-                    () => app.toggleFavourite(session),
-                    color: app.isFavourite(session.key.id)
-                        ? const Color(0xffb88123)
-                        : context.mutedInk,
-                  ),
-                  if (!compact) ...[
-                    CompactIcon(
-                      Icons.text_decrease,
-                      'Smaller text',
-                      () => app.setZoom(app.layout.zoom / 1.15),
-                    ),
-                    CompactIcon(
-                      Icons.fit_screen,
-                      'Reset text size and fit the terminal',
-                      () => app.setZoom(1),
-                    ),
-                    CompactIcon(
-                      Icons.text_increase,
-                      'Larger text',
-                      () => app.setZoom(app.layout.zoom * 1.15),
-                    ),
-                    CompactIcon(
-                      Icons.content_copy,
-                      'Copy selection or visible screen',
-                      () => unawaited(copyTerminal()),
-                    ),
-                    CompactIcon(
-                      Icons.refresh,
-                      'Reconnect terminal and refresh its dimensions',
-                      () => unawaited(app.reconnectTerminal(session.key.id)),
-                    ),
-                  ],
-                  if (!widget.mobileControls || composerOpen)
-                    CompactIcon(
-                      Icons.mic_none,
-                      defaultTargetPlatform == TargetPlatform.macOS &&
-                              app.snapshot.dictationShortcut.enabled
-                          ? 'Dictate message (${app.snapshot.dictationShortcut.label})'
-                          : 'Dictate message',
-                      () => unawaited(dictate()),
-                    ),
-                  if (compact)
-                    CompactIcon(
-                      Icons.chat_bubble_outline,
-                      composerOpen ? 'Hide message box' : 'Show message box',
-                      toggleComposer,
-                      key: const ValueKey('toggle-composer'),
-                      color: composerOpen ? context.accent : context.mutedInk,
-                    )
-                  else
-                    Tooltip(
-                      message: composerOpen
-                          ? 'Hide message box'
-                          : 'Show message box',
-                      child: TextButton.icon(
-                        key: const ValueKey('toggle-composer'),
-                        onPressed: toggleComposer,
-                        icon: Icon(
-                          composerOpen
-                              ? Icons.close
-                              : Icons.chat_bubble_outline,
-                          size: 16,
+                            if (!compact) ...[
+                              CompactIcon(
+                                Icons.text_decrease,
+                                'Smaller text',
+                                () => app.setZoom(app.layout.zoom / 1.15),
+                              ),
+                              CompactIcon(
+                                Icons.fit_screen,
+                                'Reset text size and fit the terminal',
+                                () => app.setZoom(1),
+                              ),
+                              CompactIcon(
+                                Icons.text_increase,
+                                'Larger text',
+                                () => app.setZoom(app.layout.zoom * 1.15),
+                              ),
+                              CompactIcon(
+                                Icons.content_copy,
+                                'Copy selection or visible screen',
+                                () => unawaited(copyTerminal()),
+                              ),
+                              CompactIcon(
+                                Icons.refresh,
+                                'Reconnect terminal and refresh its dimensions',
+                                () => unawaited(
+                                  app.reconnectTerminal(session.key.id),
+                                ),
+                              ),
+                            ],
+                            if (!widget.mobileControls || composerOpen)
+                              CompactIcon(
+                                Icons.mic_none,
+                                defaultTargetPlatform == TargetPlatform.macOS &&
+                                        app.snapshot.dictationShortcut.enabled
+                                    ? 'Dictate message (${app.snapshot.dictationShortcut.label})'
+                                    : 'Dictate message',
+                                () => unawaited(dictate()),
+                              ),
+                            if (compact)
+                              CompactIcon(
+                                Icons.chat_bubble_outline,
+                                composerOpen
+                                    ? 'Hide message box'
+                                    : 'Show message box',
+                                toggleComposer,
+                                key: const ValueKey('toggle-composer'),
+                                color: composerOpen
+                                    ? context.accent
+                                    : context.mutedInk,
+                              )
+                            else
+                              Tooltip(
+                                message: composerOpen
+                                    ? 'Hide message box'
+                                    : 'Show message box',
+                                child: TextButton.icon(
+                                  key: const ValueKey('toggle-composer'),
+                                  style: TextButton.styleFrom(
+                                    minimumSize: const Size(0, 32),
+                                    tapTargetSize:
+                                        MaterialTapTargetSize.shrinkWrap,
+                                  ),
+                                  onPressed: toggleComposer,
+                                  icon: Icon(
+                                    composerOpen
+                                        ? Icons.close
+                                        : Icons.chat_bubble_outline,
+                                    size: 16,
+                                  ),
+                                  label: const Text('Message'),
+                                ),
+                              ),
+                            SizedBox(
+                              width: 32,
+                              height: 32,
+                              child: PopupMenuButton<String>(
+                                tooltip: 'Terminal controls',
+                                icon: const Icon(Icons.more_horiz, size: 20),
+                                onSelected: (value) {
+                                  switch (value) {
+                                    case 'rename':
+                                      unawaited(
+                                        showRenameSession(
+                                          context,
+                                          app,
+                                          session,
+                                        ),
+                                      );
+                                    case 'info':
+                                      unawaited(showSessionInfo());
+                                    case 'copy':
+                                      unawaited(copyTerminal());
+                                    case 'fit':
+                                      app.setZoom(1);
+                                    case 'larger':
+                                      app.setZoom(app.layout.zoom * 1.2);
+                                    case 'smaller':
+                                      app.setZoom(app.layout.zoom / 1.2);
+                                    case 'reconnect':
+                                      unawaited(
+                                        app.reconnectTerminal(session.key.id),
+                                      );
+                                    case 'composer':
+                                      toggleComposer();
+                                    case 'window':
+                                      unawaited(
+                                        widget.openWindow!(
+                                          'session',
+                                          session.key.id,
+                                        ),
+                                      );
+                                    default:
+                                      if (value.startsWith('group:')) {
+                                        app.moveToGroup(
+                                          session.key.id,
+                                          value.substring(6),
+                                        );
+                                      }
+                                  }
+                                },
+                                itemBuilder: (_) => [
+                                  PopupMenuItem(
+                                    value: 'rename',
+                                    enabled: app.canManageSession(session),
+                                    child: const Text('Rename'),
+                                  ),
+                                  const PopupMenuItem(
+                                    value: 'info',
+                                    child: Text('Session details'),
+                                  ),
+                                  const PopupMenuItem(
+                                    value: 'copy',
+                                    child: Text('Copy terminal'),
+                                  ),
+                                  if (compact) ...[
+                                    const PopupMenuItem(
+                                      value: 'fit',
+                                      child: Text('Fit screen'),
+                                    ),
+                                    const PopupMenuItem(
+                                      value: 'larger',
+                                      child: Text('Larger text'),
+                                    ),
+                                    const PopupMenuItem(
+                                      value: 'smaller',
+                                      child: Text('Smaller text'),
+                                    ),
+                                    const PopupMenuItem(
+                                      value: 'reconnect',
+                                      child: Text('Reconnect terminal'),
+                                    ),
+                                  ],
+                                  PopupMenuItem(
+                                    value: 'composer',
+                                    child: Text(
+                                      composerOpen
+                                          ? 'Hide message composer'
+                                          : 'Show message composer',
+                                    ),
+                                  ),
+                                  if (widget.openWindow != null)
+                                    const PopupMenuItem(
+                                      value: 'window',
+                                      child: Text('Open in a window'),
+                                    ),
+                                  ...app.layout.groups.map(
+                                    (g) => PopupMenuItem(
+                                      value: 'group:${g.id}',
+                                      child: Text('Add to ${g.name}'),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
-                        label: const Text('Message'),
-                      ),
-                    ),
-                  PopupMenuButton<String>(
-                    tooltip: 'Terminal controls',
-                    icon: const Icon(Icons.more_horiz, size: 20),
-                    onSelected: (value) {
-                      switch (value) {
-                        case 'rename':
-                          unawaited(showRenameSession(context, app, session));
-                        case 'info':
-                          unawaited(showSessionInfo());
-                        case 'copy':
-                          unawaited(copyTerminal());
-                        case 'fit':
-                          app.setZoom(1);
-                        case 'larger':
-                          app.setZoom(app.layout.zoom * 1.2);
-                        case 'smaller':
-                          app.setZoom(app.layout.zoom / 1.2);
-                        case 'reconnect':
-                          unawaited(app.reconnectTerminal(session.key.id));
-                        case 'composer':
-                          toggleComposer();
-                        case 'window':
-                          unawaited(
-                            widget.openWindow!('session', session.key.id),
-                          );
-                        default:
-                          if (value.startsWith('group:')) {
-                            app.moveToGroup(session.key.id, value.substring(6));
-                          }
-                      }
-                    },
-                    itemBuilder: (_) => [
-                      PopupMenuItem(
-                        value: 'rename',
-                        enabled: app.canManageSession(session),
-                        child: const Text('Rename'),
-                      ),
-                      const PopupMenuItem(
-                        value: 'info',
-                        child: Text('Session details'),
-                      ),
-                      const PopupMenuItem(
-                        value: 'copy',
-                        child: Text('Copy terminal'),
-                      ),
-                      if (compact) ...[
-                        const PopupMenuItem(
-                          value: 'fit',
-                          child: Text('Fit screen'),
-                        ),
-                        const PopupMenuItem(
-                          value: 'larger',
-                          child: Text('Larger text'),
-                        ),
-                        const PopupMenuItem(
-                          value: 'smaller',
-                          child: Text('Smaller text'),
-                        ),
-                        const PopupMenuItem(
-                          value: 'reconnect',
-                          child: Text('Reconnect terminal'),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Tooltip(
+                                message:
+                                    'Computer: $computer\nWorkspace: $workspace',
+                                child: Text(
+                                  location,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: context.mutedInk,
+                                    fontSize: 10,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            if (!session.git.isEmpty) ...[
+                              const SizedBox(width: 8),
+                              Flexible(
+                                child: Align(
+                                  alignment: Alignment.centerRight,
+                                  child: GitMetadataView(
+                                    metadata: session.git,
+                                    compact: true,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
                         ),
                       ],
-                      PopupMenuItem(
-                        value: 'composer',
-                        child: Text(
-                          composerOpen
-                              ? 'Hide message composer'
-                              : 'Show message composer',
-                        ),
-                      ),
-                      if (widget.openWindow != null)
-                        const PopupMenuItem(
-                          value: 'window',
-                          child: Text('Open in a window'),
-                        ),
-                      ...app.layout.groups.map(
-                        (g) => PopupMenuItem(
-                          value: 'group:${g.id}',
-                          child: Text('Add to ${g.name}'),
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
                 ],
               ),
