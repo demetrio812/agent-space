@@ -149,7 +149,7 @@ class LocalApi:
         if self.generation() != route['generation']: raise BridgeRejected('generation_changed')
         return matches[0]
 
-    def dispatch(self, route, payload, reviewed=False, cancelled=lambda:False):
+    def dispatch(self, route, payload, reviewed=False, cancelled=lambda:False, guard=None):
         try:
             if reviewed:
                 if set(payload) != {'text'}: raise ValueError('Invalid reviewed message')
@@ -158,7 +158,8 @@ class LocalApi:
         except (ValueError, TypeError, UnicodeError): raise BridgeRejected('invalid_request')
         with self._dispatch_lock:
             if cancelled(): raise BridgeRejected('invalid_request')
-            self.member(route)
+            member = self.member(route)
+            if guard: guard(member)
             def before_send():
                 if cancelled(): raise BridgeRejected('invalid_request')
                 if self.generation() != route['generation']: raise BridgeRejected('generation_changed')

@@ -20,6 +20,7 @@ import time
 import zipfile
 
 try:
+    from .conversation import validate_payload as validate_chat
     from .image_transfers import validate_image_payload
     from .session_actions import MANAGEMENT, SessionActions, validate_management_route, validate_action, check_worker_origin
     from .launcher import launch_command
@@ -27,6 +28,7 @@ try:
     from .protocol import PROTOCOL, BridgeRejected, DeliveryUncertain, read_record, write_record
     from .gate_rules import gate
 except ImportError:
+    from conversation import validate_payload as validate_chat
     from image_transfers import validate_image_payload
     from session_actions import MANAGEMENT, SessionActions, validate_management_route, validate_action, check_worker_origin
     from launcher import launch_command
@@ -204,7 +206,7 @@ class PeerWorker:
                 submitted=True; write_record(self.process.stdin,wire)
             except (OSError,ValueError):
                 self.pending.pop(identifier,None); self.callbacks.pop(identifier,None); self._active-=1
-                if op in ('input','send','click') or op in MANAGEMENT: raise DeliveryUncertain()
+                if op in ('input','send','chat.send','click') or op in MANAGEMENT: raise DeliveryUncertain()
                 raise BridgeRejected('offline')
         success=False
         try:
@@ -216,17 +218,17 @@ class PeerWorker:
                 error=reply.get('error')
                 if not isinstance(error,dict) or type(error.get('dispatched')) is not bool:
                     raise ValueError('Invalid rejection')
-                if (op in ('input','send','click') or op in MANAGEMENT) and error['dispatched']: raise DeliveryUncertain()
+                if (op in ('input','send','chat.send','click') or op in MANAGEMENT) and error['dispatched']: raise DeliveryUncertain()
                 raise BridgeRejected(error.get('code','offline'),error['dispatched'])
             result=reply.get('result')
             if not isinstance(result,dict): raise ValueError('Invalid result')
-            if op in ('input','send','click') and result.get('sent') is not True: raise ValueError('Missing sent acknowledgement')
+            if op in ('input','send','chat.send','click') and result.get('sent') is not True: raise ValueError('Missing sent acknowledgement')
             if op in MANAGEMENT and result.get('applied') is not True: raise ValueError('Missing management acknowledgement')
             success=True
             return result
         except (queue.Empty,ValueError):
             self.close()
-            if submitted and (op in ('input','send','click') or op in MANAGEMENT): raise DeliveryUncertain()
+            if submitted and (op in ('input','send','chat.send','click') or op in MANAGEMENT): raise DeliveryUncertain()
             raise BridgeRejected('timeout')
         finally:
             with self.lock:
@@ -514,6 +516,17 @@ class GatewayWorker(LocalWorker):
 
     def operation(self,row):
         op=row['op']; route=row.get('route')
+        if op in ('chat.read','chat.send'):
+            validate_chat(op,row['payload']); validate_management_route('rename',route)
+            if op=='chat.send' and not self.config.get('allowInput',True): raise BridgeRejected('unsupported')
+            if route['machine']=='gateway': return super().operation(row)
+            machine=self.registry.require(route)
+            with self.pool.lease(machine,'discovery' if op=='chat.read' else 'input',self.priority|{machine.id}) as worker:
+                self.registry.require(route)
+                if self.closed.is_set(): raise BridgeRejected('offline')
+                result=worker.request({'op':op,'route':route,'payload':row['payload']},timeout=30)
+                if op=='chat.read': self.registry.require(route)
+                return result
         if op.startswith('image.'):return self.image_operation(op,route,row['payload'])
         if op in MANAGEMENT: return self.manage(op,route,row['payload'])
         if op=='catalog': return self.discover(row)

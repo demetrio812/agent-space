@@ -14,6 +14,7 @@ import time
 try:
     from .protocol import PROTOCOL, BridgeRejected, DeliveryUncertain, validate_request, read_record, write_record
     from .image_transfers import ImageTransfers
+    from .conversation import ConversationReader, validate_payload as validate_chat
     from .git_metadata import GitMetadata
     from .local_api import LocalApi
     from .session_actions import SessionActions, MANAGEMENT, validate_management_route, check_worker_origin
@@ -21,6 +22,7 @@ try:
 except ImportError:
     from protocol import PROTOCOL, BridgeRejected, DeliveryUncertain, validate_request, read_record, write_record
     from image_transfers import ImageTransfers
+    from conversation import ConversationReader, validate_payload as validate_chat
     from git_metadata import GitMetadata
     from local_api import LocalApi
     from session_actions import SessionActions, MANAGEMENT, validate_management_route, check_worker_origin
@@ -61,6 +63,7 @@ class LocalWorker:
         self._writer = threading.Thread(target=self._write_loop, daemon=True)
         self.images = None
         self.git_metadata = GitMetadata(self.closed)
+        self.conversation = ConversationReader(self.api)
         self._writer.start()
         threading.Thread(target=self._reap_images,daemon=True).start()
 
@@ -149,7 +152,7 @@ class LocalWorker:
         compatible=self.compatible()
         return {'type':'hello','protocol':PROTOCOL,'digest':self.config['digest'],
                 'nonce':self.nonce,'lane':self.lane,'generation':generation,
-                'capabilities':{'management':self.management_enabled(),'catalog':True,'machines':False,'network':False,'observe':compatible,
+                'capabilities':{'conversation':True,'management':self.management_enabled(),'catalog':True,'machines':False,'network':False,'observe':compatible,
                                 'images':self.image_enabled(),'input':compatible and self.config.get('allowInput',True),'viewport':compatible and self.config.get('allowInput',True)}}
 
     def handle(self, row):
@@ -184,6 +187,13 @@ class LocalWorker:
     def operation(self, row):
         op, payload = row['op'], row['payload']
         if op == 'health': return {'alive':True}
+        if op in ('chat.read','chat.send'):
+            validate_chat(op,payload)
+            route=validate_management_route('rename',row.get('route')); check_worker_origin(self.config,route)
+            if op=='chat.send':
+                if not self.config.get('allowInput',True): raise BridgeRejected('unsupported')
+                return self.conversation.send(route,payload,self.closed.is_set)
+            return self.conversation.read(route,payload)
         if op in ('catalog','input','send','observe','resize') and not self.compatible(): raise BridgeRejected('unsupported')
         if op == 'catalog':
             result = self.git_metadata.enrich(self.api.catalog())

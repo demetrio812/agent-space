@@ -48,7 +48,7 @@ func validateBridgeEnvelope(_ row:[String:Any],configuration:BridgeConfiguration
     return text.range(of:pattern,options:.regularExpression) != nil
   }
   let fields=Set(["type","protocol","nonce","lane","id","op","payload","route"])
-  let operations:[String:Set<String>]=["discovery":["catalog","machines","health"],"input":["input","send","rename","close","create","workspace.create","workspace.rename","workspace.close","health"],"streams":["observe","resize","scroll","click","cancel","health"],"transfer":["image.begin","image.chunk","image.finish","image.cancel","health"]]
+  let operations:[String:Set<String>]=["discovery":["catalog","machines","chat.read","health"],"input":["input","send","chat.send","rename","close","create","workspace.create","workspace.rename","workspace.close","health"],"streams":["observe","resize","scroll","click","cancel","health"],"transfer":["image.begin","image.chunk","image.finish","image.cancel","health"]]
   guard Set(row.keys).isSubset(of:fields), row["type"] as? String=="request",
         row["protocol"] as? String=="agentspace-bridge-v2", row["nonce"] as? String==configuration.nonce,
         row["lane"] as? String==configuration.lane, match(row["id"],#"^[1-9][0-9]{0,15}$"#),
@@ -56,7 +56,7 @@ func validateBridgeEnvelope(_ row:[String:Any],configuration:BridgeConfiguration
         let payload=row["payload"] as? [String:Any] else { throw HelperFault(message:"Unsupported bridge action.") }
   let terminalPattern=#"^[A-Za-z0-9_.:@%+/][A-Za-z0-9_.:@%+/-]{0,255}$"#
   var pane="p1"
-  if op.hasPrefix("image.") || ["input","send","observe","rename","close","create","workspace.create","workspace.rename","workspace.close"].contains(op) {
+  if op.hasPrefix("image.") || op.hasPrefix("chat.") || ["input","send","observe","rename","close","create","workspace.create","workspace.rename","workspace.close"].contains(op) {
     let routeFields:Set<String> = ["create","workspace.create","workspace.rename","workspace.close"].contains(op) ? ["machine","session","targetHash","generation"] : ["machine","session","targetHash","generation","terminal","pane"]
     guard let route=row["route"] as? [String:Any], Set(route.keys)==routeFields,
           match(route["machine"],#"^(?:gateway|[0-9a-f]{32})$"#), match(route["session"],#"^[A-Za-z0-9_.-]{1,64}$"#),
@@ -76,6 +76,17 @@ func validateBridgeEnvelope(_ row:[String:Any],configuration:BridgeConfiguration
     return !text.unicodeScalars.contains { $0.value<32 || (127..<160).contains($0.value) }
   }
   switch op {
+  case "chat.read":
+    let uuid=#"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"#
+    guard Set(payload.keys)==Set(["session","before"]),
+          ["session","before"].allSatisfy({ (payload[$0] as? String)=="" || match(payload[$0],uuid) }) else { throw HelperFault(message:"Invalid conversation read.") }
+  case "chat.send":
+    guard Set(payload.keys)==Set(["session","text"]),
+          match(payload["session"],#"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"#),
+          let text=payload["text"] as? String,
+          !text.trimmingCharacters(in:.whitespacesAndNewlines).hasPrefix("/"),
+          !text.trimmingCharacters(in:.whitespacesAndNewlines).hasPrefix("!") else { throw HelperFault(message:"Use Terminal for commands.") }
+    _=try validateOperation(["pane","run",pane,text])
   case "image.begin":
     guard Set(payload.keys)==Set(["extension","size","sha256"]),let ext=payload["extension"] as? String,["png","jpg","jpeg","gif","webp","bmp"].contains(ext),
           let size=bridgeInteger(payload["size"]),(1...16777216).contains(size),match(payload["sha256"],#"^[0-9a-f]{64}$"#) else { throw HelperFault(message:"Invalid image metadata.") }

@@ -10,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from bridge.gateway import Machine, MachineRegistry, PeerPool, GatewayWorker, ssh_arguments
 from bridge.image_transfers import ImageTransfers
+from bridge.conversation import ConversationReader
 from bridge.local_api import LocalApi
 from bridge.session_actions import SessionActions
 from bridge.protocol import BridgeRejected
@@ -25,6 +26,8 @@ class ApiPeer:
         self.connector=connector
         self.images=ImageTransfers(self.api,herdr.root/'images')
     def request(self, row, on_event=None, timeout=6):
+        if row['op']=='chat.read':
+            return ConversationReader(self.api,projects=self.api.__dict__.get('projects',self.connector.test.root/'empty-projects')).read(row['route'],row['payload'])
         if row['op'].startswith('image.'):
             return self.images.operation(row['op'],row['route'],row['payload'])
         if row['op']=='catalog':
@@ -94,6 +97,14 @@ class GatewayTests(unittest.TestCase):
         config=worker_config(self.gateway,'input'); config['allowManagement']=True
         worker=GatewayWorker(config,io.BytesIO(),registry=self.registry,connector=self.connector)
         self.addCleanup(worker.close); return worker
+
+    def test_conversation_reads_route_to_the_selected_machine_with_colliding_pane_ids(self):
+        a=self.machine(1);b=self.machine(2);worker=self.worker('discovery')
+        result=worker.operation({'op':'chat.read','route':self.route(b),'payload':{'session':'','before':''}})
+        self.assertEqual(result['status'],'unbound')
+        self.assertFalse(self.herdrs[a.id].calls)
+        self.assertTrue(any(r['method']=='pane.list' for r in self.herdrs[b.id].calls))
+        self.assertFalse(any(r['method'].startswith('pane.send') for r in self.herdrs[b.id].calls))
 
     def test_management_routes_colliding_ids_only_to_captured_peer(self):
         a=self.machine(1); b=self.machine(2,session='work'); worker=self.management_worker()

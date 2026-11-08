@@ -213,4 +213,19 @@ final class BridgeJobTests: XCTestCase {
     XCTAssertLessThanOrEqual(total,2*1024*1024)
     XCTAssertEqual(exit,75)
   }
+  func testConversationRequestsHaveExactRoutesAndNoClientPaths() throws {
+    let sid="11111111-1111-4111-8111-111111111111"
+    let route:[String:Any]=["machine":"gateway","session":"default","targetHash":String(repeating:"a",count:64),"generation":String(repeating:"b",count:64),"terminal":"t1","pane":"p1"]
+    let discovery=try config(),input=try config("input")
+    func row(_ lane:String,_ op:String,_ payload:[String:Any]) throws -> [String:Any] {
+      let c=lane=="input" ? input : discovery
+      return ["type":"request","protocol":"agentspace-bridge-v2","nonce":c.nonce,"lane":lane,"id":"1","op":op,"route":route,"payload":payload]
+    }
+    XCTAssertNoThrow(try validateBridgeEnvelope(row("discovery","chat.read",["session":"","before":""]),configuration:discovery))
+    XCTAssertNoThrow(try validateBridgeEnvelope(row("input","chat.send",["session":sid,"text":"hello"]),configuration:input))
+    for payload:[String:Any] in [["session":"../../secret","before":""],["session":sid,"before":"","path":"/tmp/file"]] {
+      XCTAssertThrowsError(try validateBridgeEnvelope(row("discovery","chat.read",payload),configuration:discovery))
+    }
+    XCTAssertThrowsError(try validateBridgeEnvelope(row("input","chat.send",["session":sid,"text":" /model"]),configuration:input))
+  }
 }
