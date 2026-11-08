@@ -1,6 +1,6 @@
 # Native Claude Chat Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Try a native Claude conversation view on its own discardable branch.
 
@@ -31,9 +31,9 @@
 
 **Interfaces:** `ConversationReader(api).read(route,payload)` returns `{session,messages,before,hasEarlier,status}`; `send(route,payload,cancelled)` checks binding and delegates reviewed dispatch. Operations `chat.read` discovery payload `{session,before}` and `chat.send` input payload `{session,text}`. Each message `{id,role,text,tools,truncated}`.
 
-- [ ] Write failing synthetic tests for exact routing/UUID matching, canonical branch, mixed blocks, incomplete lines, no symlinks, bounded pages and pre-dispatch binding change.
-- [ ] Implement adapter with bounded cache and explicit unavailable statuses; route operations through gateway, validate all boundaries, add package module.
-- [ ] Run full Python bridge tests and native Swift tests, fix failures and commit this deliverable.
+- [x] Write failing synthetic tests for exact routing/UUID matching, canonical branch, mixed blocks, incomplete lines, no symlinks, bounded pages and pre-dispatch binding change.
+- [x] Implement adapter with bounded cache and explicit unavailable statuses; route operations through gateway, validate all boundaries, add package module.
+- [x] Run full Python bridge tests and native Swift tests, fix failures and commit this deliverable.
 
 ### Task 2: Flutter bridge/controller integration
 
@@ -41,22 +41,30 @@
 
 **Interfaces:** `ConversationBackend.readConversation(SessionInfo,{String session='',String before=''})`; `sendConversation(SessionInfo,String session,String text)`; controller fetch and guarded `sendDraft(...conversationSession:)` reuse the existing pending/uncertain marker.
 
-- [ ] Write failing page validation/stale-target/delivery tests.
-- [ ] Implement strict page parsing, routed backend support and session-bound reviewed Send with no retries.
-- [ ] Run relevant Flutter/bridge tests and commit.
+- [x] Write failing page validation/stale-target/delivery tests.
+- [x] Implement strict page parsing, routed backend support and session-bound reviewed Send with no retries.
+- [x] Run relevant Flutter/bridge tests and commit.
 
 ### Task 3: Native Chat view
 
 **Files:** Create `lib/src/conversation_view.dart`, `test/conversation_view_test.dart`; modify terminal pane, Demo backend, pubspec/lock and README.
 
-- [ ] Write failing widget tests proving full off-screen message Copy, older-page loading, stable polling/navigation, preserved draft on rejected Send and narrow/light/dark layouts.
-- [ ] Implement opt-in header toggle; native messages, Markdown/code, Copy, earlier pages, new-message indicator and composer; preserve Terminal fallback and existing draft/delivery states.
-- [ ] Poll only while active/foreground; reject obsolete responses. Disable slash/bang commands and unsupported states with an explanation.
-- [ ] Run full Flutter tests and analysis; commit.
+- [x] Write failing widget tests proving full off-screen message Copy, older-page loading, stable polling/navigation, preserved draft on rejected Send and narrow/light/dark layouts.
+- [x] Implement opt-in header toggle; native messages, Markdown/code, Copy, earlier pages, new-message indicator and composer; preserve Terminal fallback and existing draft/delivery states.
+- [x] Poll only while active/foreground; reject obsolete responses. Disable slash/bang commands and unsupported states with an explanation.
+- [x] Run full Flutter tests and analysis; commit.
 
 ### Task 4: Review and devices
 
-- [ ] Rebuild bridge artifacts and run full Python, Flutter and Swift suites.
-- [ ] Obtain one independent final review, fix actionable findings and rerun affected checks.
-- [ ] Copy intentional changes to private branch preserving signing configuration, build release 42 for Mac/iOS, inspect Demo/disposable UI and install where reachable.
-- [ ] Push only the public experimental branch; report exact verification, installation results and remaining experiment limits.
+- [x] Rebuild bridge artifacts and run full Python, Flutter and Swift suites.
+- [x] Obtain one independent final review, fix actionable findings and rerun affected checks.
+- [x] Copy intentional changes to private branch preserving signing configuration, build release 42 for Mac/iOS, inspect native rendering read-only and install where reachable.
+- [x] Push only the public experimental branch; report exact verification, installation results and remaining experiment limits.
+
+## Completion evidence
+
+- Full Flutter suite: 376 passed, 38 skipped; analysis clean.
+- Bridge Python suite: 82 passed. Native Swift helper: 24 passed.
+- Independent review findings resolved in a consolidated fix pass; no findings deferred. Additional global Send bypass reproduced and fixed.
+- Build 42 signed and installed on Mac, iPhone and iPad. Mac native Chat rendered an existing remote conversation without sending input. Both mobile devices report version 42; their lock screens blocked automatic launch. Physical mobile Chat interaction remains a user check.
+- Public experiment pushed on `codex/native-claude-chat`; no merges. The private signing/build repository stays private.
