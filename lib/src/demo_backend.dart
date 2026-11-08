@@ -1,4 +1,5 @@
 import 'git_metadata.dart';
+import 'conversation.dart';
 
 import 'dart:async';
 import 'dart:convert';
@@ -14,7 +15,8 @@ class DemoBackend
         SessionBackend,
         TerminalInputBackend,
         TerminalViewportBackend,
-        SessionManagementBackend {
+        SessionManagementBackend,
+        ConversationBackend {
   @override
   String get sourceId => 'demo';
   final _streams = <String, StreamController<ObserveEvent>>{};
@@ -356,6 +358,89 @@ class DemoBackend
     _sizes[session.key.id] = (cols, rows);
     final stream = _streams[session.key.id];
     if (stream != null && !stream.isClosed) stream.add(_frame(session));
+  }
+
+  final _chatSessions = <String, String>{};
+  final _chatMessages = <String, List<ConversationMessage>>{};
+  String _chatId(SessionInfo session) => _chatSessions.putIfAbsent(
+    session.key.id,
+    () =>
+        '00000000-0000-4000-8000-${(_chatSessions.length + 1).toString().padLeft(12, '0')}',
+  );
+  String _messageId(int index) =>
+      '00000000-0000-4000-9000-${index.toString().padLeft(12, '0')}';
+  List<ConversationMessage> _conversation(SessionInfo session) =>
+      _chatMessages.putIfAbsent(
+        session.key.id,
+        () => List.generate(
+          74,
+          (i) => ConversationMessage(
+            id: _messageId(i + 1),
+            role: i.isEven ? 'user' : 'assistant',
+            text: i == 73
+                ? '## Native conversation preview\n\nThis is a complete response from **Demo data**. You can select its text or copy the entire answer with one tap.\n\n```dart\nfinal view = "Chat";\n```\n\nScroll up to load earlier messages. Switch to Terminal whenever you need the original interface.'
+                : i.isEven
+                ? 'Review example ${i ~/ 2 + 1} for the mobile interface.'
+                : 'The example looks good. Keep touch targets comfortable and preserve the reader’s position when new messages arrive.',
+            tools: i == 73 ? const ['Read', 'Edit'] : const [],
+          ),
+        ),
+      );
+
+  @override
+  Future<ConversationPage> readConversation(
+    SessionInfo session, {
+    String conversationSession = '',
+    String before = '',
+  }) async {
+    if (_closed) throw ConnectionFailure('Demo closed.');
+    final id = _chatId(session), messages = _conversation(session);
+    if (conversationSession.isNotEmpty && conversationSession != id) {
+      throw SessionUnavailable();
+    }
+    final stop = before.isEmpty
+        ? messages.length
+        : messages.indexWhere((m) => m.id == before);
+    if (stop < 0) throw SessionUnavailable();
+    final start = (stop - 60).clamp(0, stop);
+    final rows = messages.sublist(start, stop);
+    return ConversationPage(
+      session: id,
+      status: 'available',
+      messages: rows,
+      before: rows.isEmpty ? '' : rows.first.id,
+      hasEarlier: start > 0,
+      canSend: true,
+    );
+  }
+
+  @override
+  Future<void> sendConversation(
+    SessionInfo session,
+    String conversationSession,
+    String text,
+  ) async {
+    validateConversationPayload('chat.send', {
+      'session': conversationSession,
+      'text': text,
+    });
+    if (conversationSession != _chatId(session)) throw SessionUnavailable();
+    await sendText(session, text);
+    final messages = _conversation(session);
+    messages.add(
+      ConversationMessage(
+        id: _messageId(messages.length + 1),
+        role: 'user',
+        text: text,
+      ),
+    );
+    messages.add(
+      ConversationMessage(
+        id: _messageId(messages.length + 1),
+        role: 'assistant',
+        text: 'Received locally in Demo. This preview does not run an agent or execute commands.',
+      ),
+    );
   }
 
   @override

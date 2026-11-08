@@ -69,6 +69,16 @@ On Android, build and install the APK, then add an SSH connection. Ordinary pass
 
 macOS shortcuts: ⌘1 Favourites, ⌘0 all sessions, ⌘F search, Esc overview, ⌘R reconnect, ⌘Enter send draft. Ctrl+F and Ctrl+Enter send to the focused terminal; from the message box, Ctrl+Enter sends its draft. ⌘Enter retains the draft shortcut. Escape goes to a focused terminal and returns to the overview outside it. On non-Mac keyboards, Ctrl+Shift+C/V copy and paste.
 
+## Experimental native Claude Chat
+
+On the `codex/native-claude-chat` branch, open a Claude session and use **Chat view (experimental)** in its header. Terminal remains the default and stays one tap away. Chat reads the conversation from the hosting computer, so full responses can be selected and copied even when they are longer than the screen. Use **Copy last response**, the per-message Copy button, and **Load earlier messages**. New messages do not pull you away from what you are reading.
+
+The composer shares the session’s saved draft and explicitly sends **text + Enter** through Herdr. Send is available only for a verified unchanged Claude conversation in an idle/done state. Delivery uncertainty is acknowledged exactly as in Terminal; messages are never retried automatically. Use Terminal for permissions, questions, slash/bang commands, images and unsupported agents. A prompt can change between Herdr’s readiness check and input admission; this experiment does not provide an atomic Claude input protocol.
+
+This first adapter requires Herdr’s native Claude session UUID and a readable transcript under the host’s Claude projects directory (normally `~/.claude/projects`). It never guesses from titles or folders, starts another Claude process, or changes your agent authentication. The JSONL format is internal to Claude; missing, ambiguous or unsupported records explain the limitation and retain Terminal. Compaction may limit older history if Claude no longer retains it. Oversized messages are explicitly marked as previews. Markdown images never load remote URLs or local files automatically. Transcripts stay in memory while viewed and are not written to AgentSpace preferences.
+
+The normal Demo source includes a synthetic native conversation for safely testing selection, pagination and sending. To discard the experiment, rebuild the parent branch at `daa1cb6`; it remains unmerged.
+
 ## Dictation
 
 In **Settings → Dictation**, choose **OpenAI** or **ElevenLabs** and save your own API key. Each provider has a separate key stored in the device’s secure storage; add it separately on your Mac, iPhone and iPad. API usage is billed by the selected provider. OpenAI uses `gpt-live-transcribe`; ElevenLabs uses `scribe_v2_realtime`.

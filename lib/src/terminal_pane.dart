@@ -1,5 +1,6 @@
 import 'dictation_dialog.dart';
 import 'git_metadata_view.dart';
+import 'conversation_view.dart';
 
 import 'dart:async';
 import 'dart:math' as math;
@@ -70,6 +71,7 @@ class _TerminalPaneState extends State<TerminalPane> {
 
   Terminal? lastTerminal;
   bool composerOpen = false;
+  bool chatOpen = false;
   bool dictationOpen = false;
 
   Future<void> dictate() async {
@@ -120,7 +122,11 @@ class _TerminalPaneState extends State<TerminalPane> {
   }
 
   void toggleComposer() {
-    setState(() => composerOpen = !composerOpen);
+    setState(() {
+      composerOpen = chatOpen ? true : !composerOpen;
+      chatOpen = false;
+      draft.text = widget.app.layout.drafts[widget.session.key.id] ?? '';
+    });
     if (composerOpen) {
       draftFocus.requestFocus();
     } else {
@@ -139,6 +145,10 @@ class _TerminalPaneState extends State<TerminalPane> {
   void didUpdateWidget(covariant TerminalPane oldWidget) {
     super.didUpdateWidget(oldWidget);
     final saved = widget.app.layout.drafts[widget.session.key.id] ?? '';
+    if (oldWidget.session.key != widget.session.key ||
+        widget.session.agent.toLowerCase() != 'claude') {
+      chatOpen = false;
+    }
     if (oldWidget.session.key != widget.session.key || saved != draft.text) {
       draft.value = TextEditingValue(
         text: saved,
@@ -424,7 +434,28 @@ class _TerminalPaneState extends State<TerminalPane> {
                                   ? const Color(0xffb88123)
                                   : context.mutedInk,
                             ),
-                            if (!compact) ...[
+                            if (session.agent.toLowerCase() == 'claude')
+                              CompactIcon(
+                                chatOpen
+                                    ? Icons.terminal
+                                    : Icons.forum_outlined,
+                                chatOpen
+                                    ? 'Terminal view'
+                                    : 'Chat view (experimental)',
+                                () {
+                                  draftFocus.unfocus();
+                                  terminalSurfaceKey.currentState?.focus
+                                      .unfocus();
+                                  setState(() {
+                                    chatOpen = !chatOpen;
+                                    composerOpen = false;
+                                  });
+                                },
+                                color: chatOpen
+                                    ? context.accent
+                                    : context.mutedInk,
+                              ),
+                            if (!compact && !chatOpen) ...[
                               CompactIcon(
                                 Icons.text_decrease,
                                 'Smaller text',
@@ -453,7 +484,8 @@ class _TerminalPaneState extends State<TerminalPane> {
                                 ),
                               ),
                             ],
-                            if (!widget.mobileControls || composerOpen)
+                            if (!chatOpen &&
+                                (!widget.mobileControls || composerOpen))
                               CompactIcon(
                                 Icons.mic_none,
                                 defaultTargetPlatform == TargetPlatform.macOS &&
@@ -639,8 +671,16 @@ class _TerminalPaneState extends State<TerminalPane> {
             ),
             Expanded(
               child: Container(
-                color: terminalBackground,
-                child: terminal == null
+                color: chatOpen ? context.workspace : terminalBackground,
+                child: chatOpen
+                    ? ConversationView(
+                        key: ValueKey('chat-${session.key.id}'),
+                        app: app,
+                        session: session,
+                        active: widget.active && widget.visible,
+                        onTerminal: () => setState(() => chatOpen = false),
+                      )
+                    : terminal == null
                     ? Center(
                         child: Padding(
                           padding: const EdgeInsets.all(24),
@@ -776,7 +816,8 @@ class _TerminalPaneState extends State<TerminalPane> {
                       ),
               ),
             ),
-            if ((!widget.mobileControls || composerOpen) &&
+            if (!chatOpen &&
+                (!widget.mobileControls || composerOpen) &&
                 (!widget.mobileControls || state?.uncertain != true) &&
                 entry != null &&
                 (!short || state?.uncertain != true))
@@ -824,7 +865,8 @@ class _TerminalPaneState extends State<TerminalPane> {
                   ],
                 ),
               ),
-            if (!widget.mobileControls &&
+            if (!chatOpen &&
+                !widget.mobileControls &&
                 terminal != null &&
                 app.canTakeTerminalControl(session.key.id))
               Padding(
@@ -857,7 +899,7 @@ class _TerminalPaneState extends State<TerminalPane> {
                   onResume: resumeInput,
                 ),
               ),
-            if (composerOpen)
+            if (composerOpen && !chatOpen)
               Container(
                 color: context.panel,
                 padding: EdgeInsets.fromLTRB(
