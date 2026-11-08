@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'backend_errors.dart';
+import 'conversation.dart';
 import 'bridge_protocol.dart';
 import 'image_attachments.dart';
 import 'models.dart';
@@ -25,7 +26,8 @@ class _Pending {
   final done = Completer<Map<String, dynamic>>();
   bool submitted = false;
   Timer? timer;
-  bool get input => op == 'input' || op == 'send' || op == 'click';
+  bool get input =>
+      op == 'input' || op == 'send' || op == 'chat.send' || op == 'click';
   bool get management => sessionManagementOperations.contains(op);
   bool get mutation => input || management;
 }
@@ -215,10 +217,16 @@ class PersistentBridge {
         'image.cancel',
         'health',
       },
-      BridgeLane.discovery => const {'catalog', 'machines', 'health'},
+      BridgeLane.discovery => const {
+        'catalog',
+        'machines',
+        'chat.read',
+        'health',
+      },
       BridgeLane.input => const {
         'input',
         'send',
+        'chat.send',
         'rename',
         'close',
         'create',
@@ -238,6 +246,10 @@ class PersistentBridge {
     };
     if (!allowed.contains(op)) {
       throw ArgumentError('Unsupported connection action.');
+    }
+    if (op.startsWith('chat.')) {
+      validateConversationPayload(op, payload);
+      validateSessionActionRoute('rename', route);
     }
     if (op.startsWith('image.')) {
       validateImagePayload(op, payload);

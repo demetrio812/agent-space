@@ -107,6 +107,28 @@ void main() {
       expect(wire.sentInputs, hasLength(1));
     });
   }
+  test(
+    'native Chat acknowledgement loss is uncertain with one attempt',
+    () async {
+      final wire = FakeBridge()..inputFault = 'lost';
+      final bridge = PersistentBridge(wire.open);
+      addTearDown(bridge.close);
+      await expectLater(
+        bridge.request(
+          BridgeLane.input,
+          'chat.send',
+          {
+            'session': '11111111-1111-4111-8111-111111111111',
+            'text': 'one attempt',
+          },
+          route: fixtureRoute,
+          timeout: const Duration(milliseconds: 80),
+        ),
+        throwsA(isA<DeliveryUncertain>()),
+      );
+      expect(wire.sentInputs, hasLength(1));
+    },
+  );
   test('correlated pre-dispatch rejection is definite', () async {
     final wire = FakeBridge()..inputFault = 'rejected';
     final bridge = PersistentBridge(wire.open);

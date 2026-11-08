@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'backend.dart';
+import 'conversation.dart';
 import 'image_attachments.dart';
 import 'image_transfer_backend.dart';
 import 'bridge_protocol.dart';
@@ -31,7 +32,8 @@ class NetworkHerdrBackend
         TerminalScrollBackend,
         NetworkCatalogBackend,
         SessionManagementBackend,
-        ImageAttachmentBackend {
+        ImageAttachmentBackend,
+        ConversationBackend {
   NetworkHerdrBackend(this.profile, PersistentBridge bridge, {this.onClose})
     : _provider = (() async => bridge),
       _legacy = null;
@@ -480,6 +482,46 @@ class NetworkHerdrBackend
     } catch (_) {
       throw const SessionActionUncertain();
     }
+  }
+
+  @override
+  Future<ConversationPage> readConversation(
+    SessionInfo session, {
+    String conversationSession = '',
+    String before = '',
+  }) async {
+    final current = _current(session), bridge = _bridge;
+    if (bridge == null || current.origin == null) {
+      throw SessionUnavailable(
+        'Chat requires the bundled helper connection. Open Terminal to continue.',
+      );
+    }
+    final result = await bridge.request(
+      BridgeLane.discovery,
+      'chat.read',
+      {'session': conversationSession, 'before': before},
+      route: current.origin!.route(current.key.terminal, current.paneId),
+      timeout: const Duration(seconds: 30),
+    );
+    _current(session);
+    return ConversationPage.fromJson(result);
+  }
+
+  @override
+  Future<void> sendConversation(
+    SessionInfo session,
+    String conversationSession,
+    String text,
+  ) async {
+    final current = _current(session, input: true), bridge = _bridge;
+    if (bridge == null || current.origin == null) throw SessionUnavailable();
+    await bridge.request(
+      BridgeLane.input,
+      'chat.send',
+      {'session': conversationSession, 'text': text},
+      route: current.origin!.route(current.key.terminal, current.paneId),
+      timeout: const Duration(seconds: 30),
+    );
   }
 
   @override

@@ -6,6 +6,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 
 import 'backend.dart';
+import 'conversation.dart';
 import 'image_attachments.dart';
 import 'models.dart';
 import 'protocol.dart';
@@ -1243,6 +1244,7 @@ class AppController extends ChangeNotifier {
   }) async {
     if (_disposed || _active == active) return;
     _active = active;
+    notifyListeners();
     _backgroundTimer?.cancel();
     _backgroundTimer = null;
     if (!active) {
@@ -1322,6 +1324,30 @@ class AppController extends ChangeNotifier {
         current?.origin?.generation == target.origin?.generation;
   }
 
+  Future<ConversationPage> readConversation(
+    SessionInfo target, {
+    String conversationSession = '',
+    String before = '',
+  }) async {
+    final backend = _backend, generation = _generation;
+    if (backend is! ConversationBackend ||
+        !dictationTargetIsCurrent(target, generation)) {
+      throw SessionUnavailable(
+        'Chat is unavailable for this connection. Open Terminal to continue.',
+      );
+    }
+    final result = await (backend as ConversationBackend).readConversation(
+      target,
+      conversationSession: conversationSession,
+      before: before,
+    );
+    if (!identical(backend, _backend) ||
+        !dictationTargetIsCurrent(target, generation)) {
+      throw SessionUnavailable();
+    }
+    return result;
+  }
+
   Future<bool> sendDictation(SessionInfo target, int generation, String text) =>
       sendDraft(
         target.key.id,
@@ -1335,6 +1361,7 @@ class AppController extends ChangeNotifier {
     String? message,
     SessionInfo? expectedSession,
     int? expectedGeneration,
+    String? conversationSession,
   }) async {
     if (expectedSession != null &&
         !dictationTargetIsCurrent(expectedSession, expectedGeneration!)) {
@@ -1352,6 +1379,23 @@ class AppController extends ChangeNotifier {
     final backend = _backend;
     final ownerLayout = layout;
     final text = message ?? ownerLayout.drafts[id] ?? '';
+    if (conversationSession != null) {
+      try {
+        validateConversationPayload('chat.send', {
+          'session': conversationSession,
+          'text': text,
+        });
+        if (!_active ||
+            layout.selectedId != id ||
+            backend is! ConversationBackend) {
+          throw ArgumentError('This conversation is unavailable.');
+        }
+      } on ArgumentError catch (error) {
+        state.message = error.message.toString();
+        notifyListeners();
+        return false;
+      }
+    }
     final invalid = validateInput(text);
     if (invalid != null) {
       state.message = invalid;
@@ -1392,7 +1436,15 @@ class AppController extends ChangeNotifier {
         return false;
       }
       submitted = true;
-      await backend.sendText(session, text);
+      if (conversationSession == null) {
+        await backend.sendText(session, text);
+      } else {
+        await (backend as ConversationBackend).sendConversation(
+          session,
+          conversationSession,
+          text,
+        );
+      }
       ownerLayout.uncertainDeliveries.remove(id);
       if (message == null && ownerLayout.drafts[id] == text) {
         ownerLayout.drafts.remove(id);

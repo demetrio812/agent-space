@@ -113,7 +113,10 @@ class _Connection implements BridgeConnection {
       jsonDecode(utf8.decode(bytes)) as Map,
     );
     owner.requests.add(row);
-    if (row['op'] == 'input' || row['op'] == 'send' || row['op'] == 'click') {
+    if (row['op'] == 'input' ||
+        row['op'] == 'send' ||
+        row['op'] == 'chat.send' ||
+        row['op'] == 'click') {
       owner.sentInputs.add(row);
     }
     if (owner.held.contains(lane)) {
@@ -148,7 +151,10 @@ class _Connection implements BridgeConnection {
       return;
     }
     final danger =
-        row['op'] == 'input' || row['op'] == 'send' || row['op'] == 'click';
+        row['op'] == 'input' ||
+        row['op'] == 'send' ||
+        row['op'] == 'chat.send' ||
+        row['op'] == 'click';
     if (danger && owner.inputFault == 'lost') return;
     final reply = <String, dynamic>{
       'type': 'reply',
