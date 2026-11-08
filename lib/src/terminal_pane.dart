@@ -12,6 +12,7 @@ import 'package:xterm/xterm.dart' hide TerminalState;
 
 import 'controller.dart';
 import 'mobile_terminal_controls.dart';
+import 'mobile_terminal_selection.dart';
 import 'mobile_image_attachment.dart';
 import 'terminal_drop_target.dart';
 import 'models.dart';
@@ -1028,6 +1029,49 @@ class _TerminalSurfaceState extends State<TerminalSurface> {
   (int, int)? reportedViewport;
   final _terminalViewKey = GlobalKey<TerminalViewState>();
   bool _controlPressed = false, _arrowsOpen = false;
+  bool _selectionOpen = false;
+  int _selectionEpoch = 0;
+
+  Future<void> _selectText() async {
+    if (_selectionOpen || !widget.active) return;
+    final inputId = widget.inputId, epoch = _selectionEpoch;
+    final snapshot = widget.terminal.buffer.getText().trimRight();
+    _selectionOpen = true;
+    _terminalViewKey.currentState?.closeKeyboard();
+    focus.unfocus();
+    String? selected;
+    try {
+      selected = await showDialog<String>(
+        context: context,
+        useSafeArea: false,
+        builder: (_) => MobileTerminalSelection(
+          text: snapshot,
+          canPaste: widget.sendInput != null,
+        ),
+      );
+    } finally {
+      _selectionOpen = false;
+    }
+    if (!mounted) return;
+    if (inputId != widget.inputId ||
+        epoch != _selectionEpoch ||
+        !widget.active ||
+        ModalRoute.of(context)?.isCurrent == false) {
+      if (selected != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('The session changed. Selection was not pasted.'),
+          ),
+        );
+      }
+      return;
+    }
+    if (selected != null && widget.sendInput != null) {
+      _literal(selected, paste: true);
+    }
+    focus.requestFocus();
+  }
+
   int? _tapPointer;
   Offset? _tapStart;
   Duration? _tapTime;
@@ -1223,6 +1267,11 @@ class _TerminalSurfaceState extends State<TerminalSurface> {
   @override
   void didUpdateWidget(covariant TerminalSurface oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.inputId != widget.inputId ||
+        oldWidget.active && !widget.active ||
+        oldWidget.sendInput != null && widget.sendInput == null) {
+      _selectionEpoch++;
+    }
     if (oldWidget.inputId != widget.inputId ||
         widget.sendInput == null ||
         !widget.showMobileControls) {
@@ -1513,6 +1562,7 @@ class _TerminalSurfaceState extends State<TerminalSurface> {
                   _terminalViewKey.currentState?.requestKeyboard();
                 }
               },
+              onSelectText: () => unawaited(_selectText()),
               onPaste: () => unawaited(_paste(requireFocus: false)),
               onKey: _sendLogicalKey,
             ),

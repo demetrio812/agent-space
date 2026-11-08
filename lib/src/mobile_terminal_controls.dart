@@ -14,11 +14,13 @@ class MobileTerminalKeyBar extends StatelessWidget {
     required this.onArrows,
     required this.onKeyboard,
     required this.onPaste,
+    this.onSelectText,
     required this.onKey,
     this.statusMenu,
     this.onDictate,
     this.imageAttachment,
   });
+  final VoidCallback? onSelectText;
   final Widget? statusMenu;
   final VoidCallback? onDictate;
   final Widget? imageAttachment;
@@ -33,55 +35,68 @@ class MobileTerminalKeyBar extends StatelessWidget {
       child: Material(
         color: context.panel,
         shape: StadiumBorder(side: BorderSide(color: context.border)),
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _KeyButton(
-                'Control next key',
-                text: 'Ctrl',
-                selected: control,
-                onPressed: enabled ? onControl : null,
-              ),
-              _KeyButton(
-                'Escape',
-                text: 'Esc',
-                onPressed: enabled ? () => onKey('esc') : null,
-              ),
-              _KeyButton(
-                'Tab',
-                text: 'Tab',
-                onPressed: enabled ? () => onKey('tab') : null,
-              ),
-              _KeyButton(
-                'Arrow keys',
-                icon: Icons.control_camera,
-                selected: arrows,
-                onPressed: onArrows,
-              ),
-              _KeyButton(
-                'Paste into terminal',
-                icon: Icons.content_paste,
-                onPressed: enabled ? onPaste : null,
-              ),
-              ?imageAttachment,
-              if (onDictate != null)
-                _KeyButton(
-                  'Dictate message',
-                  icon: Icons.mic_none,
-                  onPressed: enabled ? onDictate : null,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _KeyButton(
+                      'Control next key',
+                      text: 'Ctrl',
+                      selected: control,
+                      onPressed: enabled ? onControl : null,
+                    ),
+                    _KeyButton(
+                      'Escape',
+                      text: 'Esc',
+                      onPressed: enabled ? () => onKey('esc') : null,
+                    ),
+                    _KeyButton(
+                      'Tab',
+                      text: 'Tab',
+                      onPressed: enabled ? () => onKey('tab') : null,
+                    ),
+                    _KeyButton(
+                      'Arrow keys',
+                      icon: Icons.control_camera,
+                      selected: arrows,
+                      onPressed: onArrows,
+                    ),
+                    if (onSelectText != null)
+                      _KeyButton(
+                        'Select terminal text',
+                        icon: Icons.text_fields,
+                        onPressed: onSelectText,
+                      ),
+                    _KeyButton(
+                      'Paste into terminal',
+                      icon: Icons.content_paste,
+                      onPressed: enabled ? onPaste : null,
+                    ),
+                    ?imageAttachment,
+                    if (onDictate != null)
+                      _KeyButton(
+                        'Dictate message',
+                        icon: Icons.mic_none,
+                        onPressed: enabled ? onDictate : null,
+                      ),
+                  ],
                 ),
-              _KeyButton(
-                keyboardVisible ? 'Hide keyboard' : 'Show keyboard',
-                icon: keyboardVisible
-                    ? Icons.keyboard_hide_outlined
-                    : Icons.keyboard_outlined,
-                onPressed: enabled ? onKeyboard : null,
               ),
-              ?statusMenu,
-            ],
-          ),
+            ),
+            _KeyButton(
+              keyboardVisible ? 'Hide keyboard' : 'Show keyboard',
+              icon: keyboardVisible
+                  ? Icons.keyboard_hide_outlined
+                  : Icons.keyboard_outlined,
+              onPressed: enabled ? onKeyboard : null,
+            ),
+            ?statusMenu,
+          ],
         ),
       ),
     ),
