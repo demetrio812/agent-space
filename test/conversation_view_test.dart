@@ -1,16 +1,31 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import 'package:agentspace/src/dictation_dialog.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:agentspace/src/controller.dart';
 import 'package:agentspace/src/storage.dart';
+import 'package:agentspace/src/models.dart';
 import 'package:agentspace/src/conversation_view.dart';
 import 'package:agentspace/src/ui_common.dart';
 import 'package:agentspace/src/terminal_pane.dart';
 
 import 'app_widget_test.dart' show createApp, closeApp;
 
-import 'conversation_test.dart' show ChatFixture, chatPage;
+import 'conversation_test.dart' show ChatFixture, chatPage, chatSid;
 import 'terminal_input_test.dart' show WidgetStore;
+
+class ReadOnlyChatFixture extends ChatFixture {
+  @override
+  SessionInfo get session => const SessionInfo(
+    key: SessionKey('demo', 'demo', 'server', 't1'),
+    paneId: 'p1',
+    title: 'Read only',
+    project: 'fixture',
+    agent: 'claude',
+    status: SessionStatus.idle,
+  );
+}
 
 void main() {
   for (final size in [
@@ -300,6 +315,202 @@ void main() {
               .text,
           isEmpty,
         );
+      } finally {
+        await tester.pumpWidget(const SizedBox());
+        await tester.runAsync(app.shutdown);
+      }
+    },
+  );
+  for (final unavailable in ['unbound', 'session_changed']) {
+    testWidgets(
+      'Chat pins its UUID through $unavailable and resume until Reload',
+      (tester) async {
+        final backend = ChatFixture();
+        final app = AppController(
+          snapshot: AppSnapshot(),
+          store: WidgetStore(),
+          backendFactory: (_) => backend,
+        );
+        const successor = '44444444-4444-4444-8444-444444444444';
+        try {
+          await app.start(polling: false);
+          app.select(backend.session.key.id);
+          app.updateDraft(backend.session.key.id, 'draft for original');
+          await tester.pumpWidget(
+            MaterialApp(
+              home: Scaffold(
+                body: ConversationView(
+                  app: app,
+                  session: backend.session,
+                  active: true,
+                  onTerminal: () {},
+                ),
+              ),
+            ),
+          );
+          await tester.pump(const Duration(milliseconds: 500));
+          backend.page = {
+            'session': unavailable == 'unbound' ? '' : successor,
+            'status': unavailable,
+            'messages': [],
+            'before': '',
+            'hasEarlier': false,
+            'canSend': false,
+          };
+          await tester.pump(const Duration(seconds: 2));
+          backend.page = {
+            ...chatPage(text: 'successor answer'),
+            'session': successor,
+          };
+          await app.setActive(false);
+          await app.setActive(true);
+          await tester.pump(const Duration(milliseconds: 500));
+          expect(backend.expectedSessions.last, chatSid);
+          expect(find.text('successor answer'), findsNothing);
+          expect(
+            tester
+                .widget<IconButton>(
+                  find.widgetWithIcon(IconButton, Icons.arrow_upward),
+                )
+                .onPressed,
+            isNull,
+          );
+          expect(
+            app.layout.drafts[backend.session.key.id],
+            'draft for original',
+          );
+          await tester.tap(find.byTooltip('Reload Chat'));
+          await tester.pump(const Duration(milliseconds: 500));
+          expect(backend.expectedSessions.last, '');
+          expect(find.text('successor answer'), findsOneWidget);
+          expect(backend.chatSends, 0);
+        } finally {
+          await tester.pumpWidget(const SizedBox());
+          await tester.runAsync(app.shutdown);
+        }
+      },
+    );
+  }
+  testWidgets('Mac dictation shortcut cannot bypass the native Chat sender', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    final app = await createApp();
+    try {
+      app.select(app.sessions.first.key.id);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: TerminalPane(
+              app: app,
+              session: app.selectedSession!,
+              compact: true,
+            ),
+          ),
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.tap(find.byTooltip('Chat view (experimental)'));
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.metaLeft);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyD);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.metaLeft);
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(find.byType(DictationDialog), findsNothing);
+    } finally {
+      await closeApp(tester, app);
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
+
+  testWidgets('read-only Chat keeps messages copyable with Send disabled', (
+    tester,
+  ) async {
+    final backend = ReadOnlyChatFixture();
+    final app = AppController(
+      snapshot: AppSnapshot(),
+      store: WidgetStore(),
+      backendFactory: (_) => backend,
+    );
+    try {
+      await app.start(polling: false);
+      app.select(backend.session.key.id);
+      app.updateDraft(backend.session.key.id, 'retained draft');
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ConversationView(
+              app: app,
+              session: backend.session,
+              active: true,
+              onTerminal: () {},
+            ),
+          ),
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(find.text('Full answer'), findsOneWidget);
+      expect(
+        tester
+            .widget<IconButton>(
+              find.widgetWithIcon(IconButton, Icons.arrow_upward),
+            )
+            .onPressed,
+        isNull,
+      );
+      expect(
+        tester
+            .widget<IconButton>(
+              find.widgetWithIcon(IconButton, Icons.content_copy).first,
+            )
+            .onPressed,
+        isNotNull,
+      );
+      expect(backend.chatSends, 0);
+    } finally {
+      await tester.pumpWidget(const SizedBox());
+      await tester.runAsync(app.shutdown);
+    }
+  });
+  testWidgets(
+    'open Chat blocks unbound draft delivery and keyboard Send uses its UUID',
+    (tester) async {
+      final backend = ChatFixture();
+      final app = AppController(
+        snapshot: AppSnapshot(),
+        store: WidgetStore(),
+        backendFactory: (_) => backend,
+      );
+      try {
+        await app.start(polling: false);
+        app.select(backend.session.key.id);
+        app.updateDraft(backend.session.key.id, 'reviewed draft');
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: ConversationView(
+                app: app,
+                session: backend.session,
+                active: true,
+                onTerminal: () {},
+              ),
+            ),
+          ),
+        );
+        await tester.pump(const Duration(milliseconds: 500));
+        expect(await app.sendDraft(backend.session.key.id), isFalse);
+        expect(backend.composedCalls, 0);
+        await tester.tap(find.byKey(const ValueKey('chat-composer')));
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.metaLeft);
+        await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.metaLeft);
+        await tester.pump(const Duration(milliseconds: 500));
+        expect(backend.chatSends, 1);
+        expect(backend.receivedSession, chatSid);
+        expect(backend.composedCalls, 0);
       } finally {
         await tester.pumpWidget(const SizedBox());
         await tester.runAsync(app.shutdown);

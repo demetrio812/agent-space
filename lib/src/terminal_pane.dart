@@ -75,7 +75,7 @@ class _TerminalPaneState extends State<TerminalPane> {
   bool dictationOpen = false;
 
   Future<void> dictate() async {
-    if (dictationOpen) return;
+    if (dictationOpen || chatOpen) return;
     final session = widget.session, app = widget.app;
     final generation = app.dictationGeneration;
     dictationOpen = true;
@@ -103,6 +103,7 @@ class _TerminalPaneState extends State<TerminalPane> {
 
   KeyEventResult handleDictationShortcut(KeyEvent event) {
     if (!mounted ||
+        chatOpen ||
         !widget.active ||
         defaultTargetPlatform != TargetPlatform.macOS ||
         !widget.app.snapshot.dictationShortcut.matches(event) ||

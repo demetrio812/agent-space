@@ -4,8 +4,9 @@ from pathlib import Path
 import tempfile
 import unittest
 import uuid
+from unittest.mock import patch
 
-from bridge.conversation import ConversationReader
+from bridge.conversation import ConversationReader, TranscriptProblem
 from bridge.local_api import LocalApi
 from bridge.protocol import BridgeRejected, DeliveryUncertain
 from bridge_test_support import FakeHerdr
@@ -155,6 +156,42 @@ class ConversationTests(unittest.TestCase):
         metadata={'uuid':str(uuid.uuid4()),'type':'system','subtype':'local_status','parentUuid':None}
         self.write([a,metadata])
         self.assertEqual([m['text'] for m in self.read()['messages']],['visible answer'])
+
+    def test_compaction_prefers_known_logical_parent_over_last_abandoned_fork(self):
+        a=message('question',role='user')
+        b=message('selected answer',a['uuid'])
+        c=message('abandoned answer',a['uuid'])
+        compact={'uuid':str(uuid.uuid4()),'parentUuid':None,'logicalParentUuid':b['uuid'],
+                 'type':'system','subtype':'compact_boundary'}
+        d=message('continued',compact['uuid'])
+        self.write([a,b,c,compact,d])
+        self.assertEqual([m['text'] for m in self.read()['messages']],
+                         ['question','selected answer','Conversation compacted','continued'])
+
+    def test_internal_notifications_and_command_results_are_not_user_messages(self):
+        a=message('question',role='user')
+        notification=message('<task-notification>internal result</task-notification>',a['uuid'],role='user',origin={'kind':'task-notification'})
+        command=message('<command-name>/status</command-name>',notification['uuid'],role='user')
+        output=message('<local-command-stdout>internal output</local-command-stdout>',command['uuid'],role='user')
+        quote=message('<local-command-stdout>a quoted example</local-command-stdout>',output['uuid'],role='user')
+        self.write([a,notification,command,output,quote])
+        self.assertEqual([m['text'] for m in self.read()['messages']],
+                         ['question','<command-name>/status</command-name>',quote['message']['content'][0]['text']])
+
+    def test_unknown_visible_message_schema_falls_back_to_terminal(self):
+        row=message('')
+        row['message']={'parts':[{'text':'unknown schema'}]}
+        self.write([row])
+        result=self.read()
+        self.assertEqual(result['status'],'unsupported_transcript')
+        self.assertFalse(result['canSend'])
+
+    def test_deadline_also_covers_projection_and_cache_sizing(self):
+        self.write([message('answer')])
+        # Read-loop checks fit inside the budget; projection consumes the rest.
+        with patch('bridge.conversation.time.monotonic', side_effect=[0,1,2]+[5]*100):
+            with self.assertRaisesRegex(TranscriptProblem, 'transcript_limit'):
+                self.reader._load(SID)
 
     def test_empty_reference_and_path_payloads_are_rejected(self):
         self.write([message('safe')])

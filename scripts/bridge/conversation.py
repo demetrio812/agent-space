@@ -55,11 +55,13 @@ def encoded(value):
     return len(json.dumps(value, ensure_ascii=True, separators=(',', ':')).encode())
 
 
-def bounded_message(value):
+def bounded_message(value, check=lambda:None):
+    check()
     if encoded(value) <= PAGE_BYTES // 2: return value
     value = {**value, 'truncated': True}
     original = value['text']; low, high = 0, len(original)
     while low < high:
+        check()
         middle = (low + high + 1) // 2
         value['text'] = original[:middle]
         if encoded(value) <= PAGE_BYTES // 2: low = middle
@@ -115,9 +117,11 @@ class ConversationReader:
             stamp = (session, info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns)
             with self._lock:
                 if stamp in self._cache: return self._cache[stamp]
-            deadline = time.monotonic()+4; nodes = {}; leaf = None; total = 0
-            while True:
+            deadline = time.monotonic()+4; nodes = {}; commands = set(); leaf = None; total = 0
+            def check():
                 if time.monotonic() > deadline: raise TranscriptProblem('transcript_limit')
+            while True:
+                check()
                 line = source.readline(MAX_LINE+1)
                 if not line: break
                 total += len(line)
@@ -130,26 +134,44 @@ class ConversationReader:
                 if not valid_id(identifier): continue
                 parent = row.get('parentUuid')
                 if row.get('type')=='system' and row.get('subtype')=='compact_boundary' and parent is None:
-                    # logicalParentUuid can point forward into the preserved
-                    # segment, whose parent is this boundary. Link the history
-                    # that was active before the boundary instead of making a cycle.
-                    parent = leaf
+                    # Prefer the exact known branch. A forward logical parent
+                    # may instead belong to the preserved segment rooted here;
+                    # fall back to the active leaf to avoid that cycle.
+                    logical = row.get('logicalParentUuid')
+                    parent = logical if valid_id(logical) and logical in nodes else leaf
                 if parent is not None and not valid_id(parent): raise TranscriptProblem('unsupported_transcript')
                 message = row.get('message'); projection = None
                 role = row.get('type')
-                visible = not row.get('isSidechain') and not row.get('isMeta') and not row.get('isCompactSummary')
-                if visible and role in ('user', 'assistant') and isinstance(message, dict):
-                    content = message.get('content', [])
+                content = message.get('content') if isinstance(message, dict) else None
+                # Origin is a CLI discriminator; command output additionally needs
+                # a command parent so ordinary user-authored XML stays visible.
+                text = content if isinstance(content, str) else None
+                if isinstance(content, list) and all(isinstance(b, dict) and b.get('type')=='text' and isinstance(b.get('text'), str) for b in content):
+                    text = '\n\n'.join(b['text'] for b in content)
+                if role=='user' and text and text.lstrip().startswith('<command-name>'):
+                    commands.add(identifier)
+                origin = row.get('origin')
+                internal = role=='user' and (
+                    isinstance(origin, dict) and origin.get('kind')=='task-notification' or
+                    parent in commands and text is not None and
+                    re.fullmatch(r'\s*<local-command-stdout>[\s\S]*</local-command-stdout>\s*', text) is not None)
+                visible = not internal and not row.get('isSidechain') and not row.get('isMeta') and not row.get('isCompactSummary')
+                if visible and role in ('user', 'assistant'):
+                    if not isinstance(message, dict) or 'content' not in message:
+                        raise TranscriptProblem('unsupported_transcript')
+                    content = message['content']
                     if isinstance(content, str): content = [{'type':'text', 'text':content}]
                     if not isinstance(content, list): raise TranscriptProblem('unsupported_transcript')
                     texts=[]; tools=[]
                     for block in content:
-                        if not isinstance(block, dict): continue
+                        if not isinstance(block, dict): raise TranscriptProblem('unsupported_transcript')
                         if block.get('type')=='text' and isinstance(block.get('text'), str): texts.append(block['text'])
                         elif block.get('type')=='image': texts.append('[Image]')
                         elif block.get('type')=='tool_use' and isinstance(block.get('name'), str):
                             name=block['name'][:64]
                             if name.isprintable(): tools.append(name)
+                        elif block.get('type') not in ('tool_result','thinking','redacted_thinking'):
+                            raise TranscriptProblem('unsupported_transcript')
                     projection={'id':identifier, 'role':role, 'text':'\n\n'.join(texts), 'tools':tools[:32],
                                 'truncated':False, '_api':message.get('id'), '_block':row.get('apiBlockIndex')}
                 elif visible and role=='system' and row.get('subtype')=='compact_boundary':
@@ -159,6 +181,7 @@ class ConversationReader:
                 if len(nodes)>500000: raise TranscriptProblem('transcript_limit')
             chain=[]; seen=set()
             while leaf in nodes:
+                check()
                 if leaf in seen: raise TranscriptProblem('unsupported_transcript')
                 seen.add(leaf)
                 parent, projection=nodes[leaf]
@@ -169,6 +192,7 @@ class ConversationReader:
                 if not group: return
                 first=group[0]; parts={}
                 for entry in group:
+                    check()
                     index=entry.get('_block')
                     # Newer CLI writes one record per API block; older CLI writes
                     # the cumulative message, which replaces previous content.
@@ -177,14 +201,20 @@ class ConversationReader:
                 value={k:first[k] for k in ('id','role','text','tools','truncated')}
                 value['text']='\n\n'.join(e['text'] for e in ordered if e['text'])
                 value['tools']=[name for e in ordered for name in e['tools']][:32]
-                if value['text'] or value['tools']: messages.append(bounded_message(value))
+                if value['text'] or value['tools']: messages.append(bounded_message(value, check))
                 group.clear()
             for entry in chain:
+                check()
                 if group and not (entry['role']=='assistant' and entry.get('_api') and entry.get('_api')==group[0].get('_api')): flush()
                 group.append(entry)
             flush()
             # Keep only small projections cached; never retain raw tool output.
-            if sum(encoded(m) for m in messages)<=8*1024*1024:
+            size = 0
+            for item in messages:
+                check()
+                size += encoded(item)
+            check()
+            if size<=8*1024*1024:
                 with self._lock:
                     if len(self._cache)>=2: self._cache.clear()
                     self._cache[stamp]=messages

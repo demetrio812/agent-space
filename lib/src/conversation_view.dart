@@ -36,6 +36,8 @@ class _ConversationViewState extends State<ConversationView> {
   Timer? timer;
   ConversationPage? page;
   String before = '';
+  // Pinned independently of transient pages; only explicit Reload may rebind.
+  String boundSession = '';
   String? error;
   bool busy = false, earlierBusy = false, hasEarlier = false, limitHit = false;
   bool wasRunning = false;
@@ -49,6 +51,7 @@ class _ConversationViewState extends State<ConversationView> {
   @override
   void initState() {
     super.initState();
+    widget.app.claimConversationComposer(widget.session.key.id, this);
     _syncDraft();
     widget.app.addListener(_appChanged);
     scroll.addListener(_scrolled);
@@ -87,6 +90,27 @@ class _ConversationViewState extends State<ConversationView> {
   @override
   void didUpdateWidget(covariant ConversationView oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.app != widget.app ||
+        oldWidget.session.key != widget.session.key) {
+      oldWidget.app.releaseConversationComposer(oldWidget.session.key.id, this);
+      oldWidget.app.removeListener(_appChanged);
+      widget.app.claimConversationComposer(widget.session.key.id, this);
+      widget.app.addListener(_appChanged);
+      epoch++;
+      timer?.cancel();
+      busy = false;
+      earlierBusy = false;
+      page = null;
+      boundSession = '';
+      history.clear();
+      live.clear();
+      before = '';
+      hasEarlier = false;
+      limitHit = false;
+      error = null;
+      newMessages = 0;
+      wasRunning = false;
+    }
     _syncDraft();
     _activity();
   }
@@ -108,6 +132,7 @@ class _ConversationViewState extends State<ConversationView> {
     if (reset) {
       epoch++;
       page = null;
+      boundSession = '';
       live.clear();
       history.clear();
       before = '';
@@ -130,10 +155,27 @@ class _ConversationViewState extends State<ConversationView> {
     try {
       final result = await widget.app.readConversation(
         widget.session,
-        conversationSession: page?.session ?? '',
+        conversationSession: boundSession,
         before: earlier ? before : '',
       );
       if (!mounted || currentEpoch != epoch || !running) return;
+      if (boundSession.isNotEmpty &&
+          result.session != boundSession &&
+          result.status != 'unbound') {
+        const changed = ConversationPage(
+          session: '',
+          status: 'session_changed',
+          messages: [],
+        );
+        setState(() {
+          page = changed;
+          error = changed.explanation;
+        });
+        return;
+      }
+      if (boundSession.isEmpty && result.status != 'session_changed') {
+        boundSession = result.session;
+      }
       if (!result.available) {
         setState(() {
           page = result;
@@ -268,14 +310,20 @@ class _ConversationViewState extends State<ConversationView> {
 
   Future<void> _send() async {
     final current = page;
-    if (current == null || !current.canSend || error != null || !running) {
+    if (current == null ||
+        !current.available ||
+        !current.canSend ||
+        current.session != boundSession ||
+        !widget.session.inputEnabled ||
+        error != null ||
+        !running) {
       return;
     }
     final app = widget.app, generation = app.dictationGeneration;
     app.updateDraft(widget.session.key.id, draft.text);
     final sent = await app.sendDraft(
       widget.session.key.id,
-      conversationSession: current.session,
+      conversationSession: boundSession,
       expectedSession: widget.session,
       expectedGeneration: generation,
     );
@@ -290,6 +338,7 @@ class _ConversationViewState extends State<ConversationView> {
   void dispose() {
     epoch++;
     timer?.cancel();
+    widget.app.releaseConversationComposer(widget.session.key.id, this);
     widget.app.removeListener(_appChanged);
     scroll.removeListener(_scrolled);
     scroll.dispose();
@@ -394,6 +443,8 @@ class _ConversationViewState extends State<ConversationView> {
     final command = RegExp(r'^\s*[/!]').hasMatch(draft.text);
     final canSend =
         running &&
+        widget.session.inputEnabled &&
+        page?.session == boundSession &&
         page?.canSend == true &&
         error == null &&
         !command &&
@@ -401,184 +452,194 @@ class _ConversationViewState extends State<ConversationView> {
         state?.uncertain != true &&
         !widget.app.terminalInputPending(widget.session.key.id) &&
         draft.text.trim().isNotEmpty;
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'Chat · experimental',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: context.mutedInk, fontSize: 11),
-                ),
-              ),
-              if (newMessages > 0)
-                Badge(
-                  label: Text(newMessages > 99 ? '99+' : '$newMessages'),
-                  child: IconButton(
-                    tooltip: 'Jump to latest',
-                    onPressed: _bottom,
-                    icon: const Icon(Icons.arrow_downward),
-                  ),
-                ),
-              IconButton(
-                style: IconButton.styleFrom(
-                  minimumSize: const Size(44, 44),
-                  visualDensity: VisualDensity.standard,
-                ),
-                tooltip: 'Copy last response',
-                onPressed: last == null ? null : () => unawaited(_copy(last)),
-                icon: const Icon(Icons.content_copy, size: 18),
-              ),
-              IconButton(
-                style: IconButton.styleFrom(
-                  minimumSize: const Size(44, 44),
-                  visualDensity: VisualDensity.standard,
-                ),
-                tooltip: 'Reload Chat',
-                onPressed: busy || earlierBusy
-                    ? null
-                    : () => unawaited(_read(reset: true)),
-                icon: const Icon(Icons.refresh, size: 20),
-              ),
-              IconButton(
-                style: IconButton.styleFrom(
-                  minimumSize: const Size(44, 44),
-                  visualDensity: VisualDensity.standard,
-                ),
-                tooltip: 'Open Terminal',
-                onPressed: widget.onTerminal,
-                icon: const Icon(Icons.terminal, size: 20),
-              ),
-            ],
-          ),
-        ),
-        Expanded(
-          child: live.isEmpty && history.isEmpty
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Text(
-                      busy
-                          ? 'Loading conversation…'
-                          : error ?? 'No conversation messages yet.',
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                )
-              : NotificationListener<UserScrollNotification>(
-                  onNotification: (notification) {
-                    if (notification.direction != ScrollDirection.idle) {
-                      scrollIntent++;
-                    }
-                    return false;
-                  },
-                  child: CustomScrollView(
-                    key: const ValueKey('chat-history'),
-                    controller: scroll,
-                    center: center,
-                    slivers: [
-                      SliverToBoxAdapter(
-                        child: Center(
-                          child: hasEarlier
-                              ? TextButton(
-                                  onPressed: earlierBusy || busy || limitHit
-                                      ? null
-                                      : () => unawaited(_read(earlier: true)),
-                                  child: Text(
-                                    earlierBusy
-                                        ? 'Loading…'
-                                        : 'Load earlier messages',
-                                  ),
-                                )
-                              : const SizedBox(height: 8),
-                        ),
-                      ),
-                      SliverList.builder(
-                        itemCount: history.length,
-                        itemBuilder: (_, i) =>
-                            _message(history[history.length - 1 - i]),
-                      ),
-                      SliverList.builder(
-                        key: center,
-                        itemCount: live.length,
-                        itemBuilder: (_, i) => _message(live[i]),
-                      ),
-                      const SliverToBoxAdapter(child: SizedBox(height: 12)),
-                    ],
-                  ),
-                ),
-        ),
-        if (error != null && (live.isNotEmpty || history.isNotEmpty))
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.enter, meta: true): () {
+          if (canSend) unawaited(_send());
+        },
+        const SingleActivator(LogicalKeyboardKey.enter, control: true): () {
+          if (canSend) unawaited(_send());
+        },
+      },
+      child: Column(
+        children: [
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-            child: Text(
-              error!,
-              style: TextStyle(color: context.attention, fontSize: 12),
-            ),
-          ),
-        if (state?.message != null && state?.uncertain != true)
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-            child: Text(
-              state!.message!,
-              style: TextStyle(color: context.mutedInk, fontSize: 12),
-            ),
-          ),
-        if (page?.canSend != true || command)
-          TextButton(
-            onPressed: widget.onTerminal,
-            child: Text(
-              command ? 'Open Terminal for this command' : 'Open Terminal',
-            ),
-          ),
-        SafeArea(
-          top: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(12, 4, 12, 10),
+            padding: const EdgeInsets.symmetric(horizontal: 8),
             child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Expanded(
-                  child: TextField(
-                    key: const ValueKey('chat-composer'),
-                    controller: draft,
-                    minLines: 1,
-                    maxLines: 5,
-                    onChanged: (text) {
-                      widget.app.updateDraft(widget.session.key.id, text);
-                      setState(() {});
-                    },
-                    decoration: const InputDecoration(
-                      hintText: 'Message Claude',
-                      contentPadding: EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 10,
-                      ),
-                    ),
-                    textInputAction: TextInputAction.newline,
+                  child: Text(
+                    'Chat · experimental',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: context.mutedInk, fontSize: 11),
                   ),
                 ),
-                const SizedBox(width: 8),
-                IconButton.filled(
-                  tooltip: 'Send text + Enter',
-                  onPressed: canSend ? () => unawaited(_send()) : null,
-                  icon: state?.sending == true
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.arrow_upward),
+                if (newMessages > 0)
+                  Badge(
+                    label: Text(newMessages > 99 ? '99+' : '$newMessages'),
+                    child: IconButton(
+                      tooltip: 'Jump to latest',
+                      onPressed: _bottom,
+                      icon: const Icon(Icons.arrow_downward),
+                    ),
+                  ),
+                IconButton(
+                  style: IconButton.styleFrom(
+                    minimumSize: const Size(44, 44),
+                    visualDensity: VisualDensity.standard,
+                  ),
+                  tooltip: 'Copy last response',
+                  onPressed: last == null ? null : () => unawaited(_copy(last)),
+                  icon: const Icon(Icons.content_copy, size: 18),
+                ),
+                IconButton(
+                  style: IconButton.styleFrom(
+                    minimumSize: const Size(44, 44),
+                    visualDensity: VisualDensity.standard,
+                  ),
+                  tooltip: 'Reload Chat',
+                  onPressed: busy || earlierBusy
+                      ? null
+                      : () => unawaited(_read(reset: true)),
+                  icon: const Icon(Icons.refresh, size: 20),
+                ),
+                IconButton(
+                  style: IconButton.styleFrom(
+                    minimumSize: const Size(44, 44),
+                    visualDensity: VisualDensity.standard,
+                  ),
+                  tooltip: 'Open Terminal',
+                  onPressed: widget.onTerminal,
+                  icon: const Icon(Icons.terminal, size: 20),
                 ),
               ],
             ),
           ),
-        ),
-      ],
+          Expanded(
+            child: live.isEmpty && history.isEmpty
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Text(
+                        busy
+                            ? 'Loading conversation…'
+                            : error ?? 'No conversation messages yet.',
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  )
+                : NotificationListener<UserScrollNotification>(
+                    onNotification: (notification) {
+                      if (notification.direction != ScrollDirection.idle) {
+                        scrollIntent++;
+                      }
+                      return false;
+                    },
+                    child: CustomScrollView(
+                      key: const ValueKey('chat-history'),
+                      controller: scroll,
+                      center: center,
+                      slivers: [
+                        SliverToBoxAdapter(
+                          child: Center(
+                            child: hasEarlier
+                                ? TextButton(
+                                    onPressed: earlierBusy || busy || limitHit
+                                        ? null
+                                        : () => unawaited(_read(earlier: true)),
+                                    child: Text(
+                                      earlierBusy
+                                          ? 'Loading…'
+                                          : 'Load earlier messages',
+                                    ),
+                                  )
+                                : const SizedBox(height: 8),
+                          ),
+                        ),
+                        SliverList.builder(
+                          itemCount: history.length,
+                          itemBuilder: (_, i) =>
+                              _message(history[history.length - 1 - i]),
+                        ),
+                        SliverList.builder(
+                          key: center,
+                          itemCount: live.length,
+                          itemBuilder: (_, i) => _message(live[i]),
+                        ),
+                        const SliverToBoxAdapter(child: SizedBox(height: 12)),
+                      ],
+                    ),
+                  ),
+          ),
+          if (error != null && (live.isNotEmpty || history.isNotEmpty))
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              child: Text(
+                error!,
+                style: TextStyle(color: context.attention, fontSize: 12),
+              ),
+            ),
+          if (state?.message != null && state?.uncertain != true)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              child: Text(
+                state!.message!,
+                style: TextStyle(color: context.mutedInk, fontSize: 12),
+              ),
+            ),
+          if (page?.canSend != true || command)
+            TextButton(
+              onPressed: widget.onTerminal,
+              child: Text(
+                command ? 'Open Terminal for this command' : 'Open Terminal',
+              ),
+            ),
+          SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 4, 12, 10),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Expanded(
+                    child: TextField(
+                      key: const ValueKey('chat-composer'),
+                      controller: draft,
+                      minLines: 1,
+                      maxLines: 5,
+                      onChanged: (text) {
+                        widget.app.updateDraft(widget.session.key.id, text);
+                        setState(() {});
+                      },
+                      decoration: const InputDecoration(
+                        hintText: 'Message Claude',
+                        contentPadding: EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
+                      ),
+                      textInputAction: TextInputAction.newline,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton.filled(
+                    tooltip: 'Send text + Enter',
+                    onPressed: canSend ? () => unawaited(_send()) : null,
+                    icon: state?.sending == true
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.arrow_upward),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -104,6 +104,18 @@ class AppController extends ChangeNotifier {
   String search = '';
   final terminals = <String, TerminalEntry>{};
   final sendStates = <String, SendState>{};
+  // An open native composer must never fall through to unbound terminal Send.
+  final _conversationComposers = <String, Object>{};
+  void claimConversationComposer(String id, Object owner) {
+    _conversationComposers[id] = owner;
+  }
+
+  void releaseConversationComposer(String id, Object owner) {
+    if (identical(_conversationComposers[id], owner)) {
+      _conversationComposers.remove(id);
+    }
+  }
+
   final imageDrops = <String, ImageDropState>{};
   int _imagePickerEpoch = 0;
   final sessionActionStates = <String, SessionActionState>{};
@@ -1368,6 +1380,11 @@ class AppController extends ChangeNotifier {
       return false;
     }
     final state = sendStates.putIfAbsent(id, SendState.new);
+    if (conversationSession == null && _conversationComposers.containsKey(id)) {
+      state.message = 'Use the Chat composer to send to this conversation.';
+      notifyListeners();
+      return false;
+    }
     if (terminalInputPending(id) ||
         state.sending ||
         state.uncertain ||

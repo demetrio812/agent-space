@@ -34,6 +34,7 @@ Map<String, dynamic> chatPage({
 class ChatFixture extends InputFixture implements ConversationBackend {
   Completer<ConversationPage>? readHold;
   int reads = 0;
+  final expectedSessions = <String>[];
   Map<String, dynamic>? earlierPage;
   bool failSend = false;
   int chatSends = 0;
@@ -46,6 +47,7 @@ class ChatFixture extends InputFixture implements ConversationBackend {
     String before = '',
   }) async {
     reads++;
+    expectedSessions.add(conversationSession);
     if (readHold != null) return await readHold!.future;
     return ConversationPage.fromJson(
       before.isNotEmpty && earlierPage != null ? earlierPage! : page,
