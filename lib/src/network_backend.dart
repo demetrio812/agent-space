@@ -2,6 +2,7 @@ import 'file_browser.dart';
 import 'project_files.dart';
 
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'backend.dart';
 import 'conversation.dart';
@@ -38,6 +39,7 @@ class NetworkHerdrBackend
         ImageAttachmentBackend,
         ConversationBackend,
         ProjectFilesBackend,
+        ProjectDownloadBackend,
         FileBrowserBackend {
   NetworkHerdrBackend(this.profile, PersistentBridge bridge, {this.onClose})
     : _provider = (() async => bridge),
@@ -546,6 +548,36 @@ class NetworkHerdrBackend
     );
     _current(session);
     return ProjectManifest.fromJson(result);
+  }
+
+  @override
+  Future<Uint8List> downloadProjectFile(
+    SessionInfo session,
+    String scope,
+    ProjectFile file,
+  ) async {
+    final current = _current(session), bridge = _bridge;
+    if (bridge == null || current.origin == null) throw SessionUnavailable();
+    final result = await bridge.request(
+      BridgeLane.discovery,
+      'files.download',
+      {'scope': scope, 'file': file.id},
+      route: current.origin!.route(current.key.terminal, current.paneId),
+      timeout: const Duration(seconds: 30),
+    );
+    _current(session);
+    if (result['scope'] != scope ||
+        result['file'] != file.id ||
+        result['revision'] != file.revision ||
+        result['bytes'] is! String ||
+        (result['bytes'] as String).length > 349528) {
+      throw const FormatException('Invalid document download.');
+    }
+    final bytes = base64Decode(result['bytes'] as String);
+    if (bytes.length > 256 * 1024 || base64Encode(bytes) != result['bytes']) {
+      throw const FormatException('Invalid document download.');
+    }
+    return bytes;
   }
 
   @override

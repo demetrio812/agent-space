@@ -28,6 +28,22 @@ class FileBrowserTests(unittest.TestCase):
     def page(self,path=''):return self.request('list',{'path':path})
     def begin(self,name='hello.bin',data=b'\x00hello'):
         page=self.page();return self.request('begin',{'path':page['path'],'scope':page['scope'],'name':name,'size':len(data),'sha256':hashlib.sha256(data).hexdigest()})
+    def test_download_binary_chunks_are_revision_scoped_and_do_not_follow_links(self):
+        data=bytes(range(256))*1100
+        source=self.root/'archive.bin';source.write_bytes(data)
+        page=self.page();entry=page['entries'][0]
+        p={'path':page['path'],'scope':page['scope'],'name':entry['name'],'revision':entry['revision'],'offset':0}
+        first=self.request('download',p)
+        self.assertEqual(base64.b64decode(first['bytes']),data[:256*1024]);self.assertFalse(first['eof'])
+        second=self.request('download',dict(p,offset=256*1024))
+        self.assertEqual(base64.b64decode(second['bytes']),data[256*1024:]);self.assertTrue(second['eof'])
+        source.write_bytes(b'changed')
+        with self.assertRaises(BridgeRejected):self.request('download',p)
+        source.unlink();source.symlink_to('/etc/passwd')
+        with self.assertRaises(BridgeRejected):self.request('download',p)
+        for offset in (-1,True,32*1024*1024+1):
+            with self.assertRaises(BridgeRejected):self.request('download',dict(p,offset=offset))
+
     def test_browse_starts_at_pane_and_can_navigate_elsewhere(self):
         (self.root/'child').mkdir();(self.root/'readme.md').write_text('# hi');os.mkfifo(self.root/'pipe')
         page=self.page();self.assertEqual(page['path'],str(self.root))
@@ -97,6 +113,23 @@ class FileBrowserTests(unittest.TestCase):
         token=self.begin('empty',b'')['token']
         with patch('bridge.file_browser.os.link',side_effect=OSError(errno.ENOTSUP,'No hard links')):
             self.assertTrue(self.request('finish',{'token':token})['uploaded'])
+
+    def test_create_folder_is_scoped_and_never_replaces_existing_items(self):
+        page=self.page();payload={'path':page['path'],'scope':page['scope'],'name':'New folder'}
+        result=self.request('mkdir',payload)
+        self.assertEqual(result,{'created':True,'path':str(self.root/'New folder')})
+        self.assertTrue((self.root/'New folder').is_dir())
+        for existing in ('New folder','existing.txt','link'):
+            if existing=='existing.txt':(self.root/existing).write_text('keep')
+            if existing=='link':(self.root/existing).symlink_to(self.root/'New folder')
+            with self.assertRaises(BridgeRejected) as error:self.request('mkdir',{**payload,'name':existing})
+            self.assertEqual(error.exception.code,'file_exists')
+        self.assertEqual((self.root/'existing.txt').read_text(),'keep')
+        for invalid in ('../other','/absolute','.','..',' ','.agentspace-upload-test'):
+            with self.assertRaises(BridgeRejected):self.request('mkdir',{**payload,'name':invalid})
+        self.api.cwd=str(self.root.parent)
+        with self.assertRaises(BridgeRejected):self.request('mkdir',{**payload,'name':'stale'})
+        self.assertFalse((self.root/'stale').exists())
 
     def test_limits_and_payloads(self):
         for name in ('../outside','/absolute','.','..','a/b','bad\x00name'):

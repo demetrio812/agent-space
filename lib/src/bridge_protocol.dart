@@ -168,6 +168,8 @@ Object bridgeRejection(Map<String, dynamic> error, {required bool input}) {
     'file_exists',
     'file_upload_unsupported',
     'upload_uncertain',
+    'folder_uncertain',
+    'file_download_too_large',
     'file_too_large',
     'file_encoding',
     'file_changed',
@@ -195,10 +197,16 @@ Object bridgeRejection(Map<String, dynamic> error, {required bool input}) {
       'Your account does not have permission for this folder or file.',
     ),
     'file_exists' => FileRequestRejected(
-      'A file with this name already exists. Rename the local file before uploading.',
+      'An item with this name already exists. Choose a different name.',
     ),
     'file_upload_unsupported' => FileRequestRejected(
       'This filesystem does not support atomic uploads. Choose another folder.',
+    ),
+    'file_download_too_large' => FileRequestRejected(
+      'Choose files up to 32 MiB to download.',
+    ),
+    'folder_uncertain' => SessionUnavailable(
+      'Folder creation could not be confirmed. Check the destination before trying again.',
     ),
     'upload_uncertain' => SessionUnavailable(
       'Upload outcome is unknown. Refresh the destination before trying again.',

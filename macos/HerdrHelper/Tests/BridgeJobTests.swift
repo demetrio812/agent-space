@@ -47,6 +47,9 @@ final class BridgeJobTests: XCTestCase {
   func testFileBrowserTypedBrowseAndUpload() throws {
     let route:[String:Any] = ["machine":"gateway","session":"default","targetHash":String(repeating:"a",count:64),"generation":String(repeating:"b",count:64),"terminal":"t1","pane":"p1"]
     for (lane,op,payload) in [("discovery","fs.list",["path":""] as [String:Any]),("discovery","fs.read",["path":"/tmp","scope":String(repeating:"a",count:64),"name":"README.md","revision":String(repeating:"b",count:64)]),
+      ("transfer","fs.download",["path":"/tmp","scope":String(repeating:"a",count:64),"name":"data.bin","revision":String(repeating:"b",count:64),"offset":0]),
+      ("discovery","files.download",["scope":String(repeating:"a",count:64),"file":String(repeating:"b",count:64)]),
+      ("transfer","fs.mkdir",["path":"/tmp","scope":String(repeating:"a",count:64),"name":"New folder"]),
       ("transfer","fs.begin",["path":"/tmp","scope":String(repeating:"a",count:64),"name":"data.bin","size":0,"sha256":String(repeating:"b",count:64)]),
       ("transfer","fs.chunk",["token":String(repeating:"a",count:32),"offset":0,"bytes":"YQ=="])] {
       let c=try config(lane)

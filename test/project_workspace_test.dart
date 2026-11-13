@@ -1,3 +1,4 @@
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/services.dart';
@@ -67,6 +68,20 @@ class ChatFilesFixture extends ChatFixture implements ProjectFilesBackend {
   ) => files.readProjectFile(s, scope, file);
 }
 
+class ProjectDownloadFixture extends ProjectFixture
+    implements ProjectDownloadBackend {
+  int downloads = 0;
+  @override
+  Future<Uint8List> downloadProjectFile(
+    SessionInfo s,
+    String scope,
+    ProjectFile file,
+  ) async {
+    downloads++;
+    return Uint8List.fromList([239, 187, 191, 35, 32, 65, 13, 10]);
+  }
+}
+
 class PanelCountingStore extends WidgetStore {
   int writes = 0;
   @override
@@ -76,6 +91,53 @@ class PanelCountingStore extends WidgetStore {
 }
 
 void main() {
+  testWidgets(
+    'Documents download exports source bytes without opening a tab or sending input',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1200, 800));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final backend = ProjectDownloadFixture();
+      final app = AppController(
+        snapshot: AppSnapshot(),
+        store: WidgetStore(),
+        backendFactory: (_) => backend,
+      );
+      final exports = <List<int>>[];
+      try {
+        await app.start(polling: false);
+        app.select(backend.session.key.id);
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: ProjectWorkspace(
+                app: app,
+                session: backend.session,
+                active: true,
+                saveFile: (_, name, bytes) async {
+                  expect(name, 'README.md');
+                  exports.add(bytes);
+                  return true;
+                },
+                builder: (_, _, _) => const Text('Terminal'),
+              ),
+            ),
+          ),
+        );
+        await tester.pump(const Duration(milliseconds: 300));
+        await tester.tap(find.byTooltip('Download README.md'));
+        await tester.pump();
+        expect(exports.single, [239, 187, 191, 35, 32, 65, 13, 10]);
+        expect(backend.downloads, 1);
+        expect(backend.reads, 0);
+        expect(backend.input, isEmpty);
+        expect(find.byType(ProjectFileViewer), findsNothing);
+      } finally {
+        await tester.pumpWidget(const SizedBox());
+        await tester.runAsync(app.shutdown);
+      }
+    },
+  );
+
   testWidgets(
     'Files and Specs stay separate while document tabs are deduplicated and closable',
     (tester) async {

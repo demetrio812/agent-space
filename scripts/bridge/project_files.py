@@ -1,6 +1,7 @@
 """Read-only documents anchored to verified directory descriptors for each operation."""
 from contextlib import contextmanager
 from dataclasses import dataclass
+import base64
 import hashlib
 import itertools
 import json
@@ -24,7 +25,7 @@ def validate_payload(op, payload):
     if not isinstance(payload,dict): raise BridgeRejected('invalid_request')
     if op=='files.list':
         if payload: raise BridgeRejected('invalid_request')
-    elif op=='files.read':
+    elif op in ('files.read','files.download'):
         if set(payload)!={'scope','file'} or any(not isinstance(v,str) or not HEX.fullmatch(v) for v in payload.values()):
             raise BridgeRejected('invalid_request')
     else: raise BridgeRejected('invalid_request')
@@ -187,7 +188,7 @@ class ProjectFiles:
         with self._context(route) as context:
             page,_=self._discover(context);self._revalidate(route,page['scope']);return page
 
-    def _read_file(self, root, parts, expected):
+    def _read_file(self, root, parts, expected, raw=False):
         directory=self._directory(root,parts[:-1])
         try:fd=os.open(parts[-1],os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK,dir_fd=directory)
         finally:os.close(directory)
@@ -199,10 +200,11 @@ class ProjectFiles:
             data=source.read(MAX_FILE+1)
             if len(data)>MAX_FILE:raise BridgeRejected('file_too_large')
             if revision(os.fstat(source.fileno()))!=expected:raise BridgeRejected('file_changed')
+        if raw:return data
         try:return data.decode('utf-8-sig')
         except UnicodeError:raise BridgeRejected('file_encoding')
 
-    def read(self, route, payload):
+    def read(self, route, payload, download=False):
         validate_payload('files.read',payload)
         with self._context(route) as context:
             page,locations=self._discover(context)
@@ -210,11 +212,12 @@ class ProjectFiles:
             location=locations.get(payload['file'])
             if location is None:raise BridgeRejected('file_unavailable')
             try:
-                text=self._read_file(*location)
+                text=self._read_file(*location,raw=True) if download else self._read_file(*location)
                 _,after=self._discover(context)
                 if after.get(payload['file'])!=location:raise BridgeRejected('file_changed')
                 self._revalidate(route,page['scope'])
             except OSError:raise BridgeRejected('file_unavailable')
-            result={'scope':page['scope'],'file':payload['file'],'revision':location[2],'text':text}
+            result={'scope':page['scope'],'file':payload['file'],'revision':location[2]}
+            result.update({'bytes':base64.b64encode(text).decode()} if download else {'text':text})
             if len(json.dumps(result,ensure_ascii=True).encode())>1024*1024:raise BridgeRejected('file_too_large')
             return result

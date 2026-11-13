@@ -9,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'backend_errors.dart';
 import 'controller.dart';
 import 'file_browser.dart';
+import 'file_download.dart';
 import 'models.dart';
 import 'project_file_viewer.dart';
 import 'ui_common.dart';
@@ -68,11 +69,13 @@ class SessionFileBrowser extends StatefulWidget {
     required this.session,
     required this.active,
     this.pickFiles,
+    this.saveFile,
   });
   final AppController app;
   final SessionInfo session;
   final bool active;
   final Future<List<BrowserSource>> Function()? pickFiles;
+  final Future<bool> Function(BuildContext, String, Uint8List)? saveFile;
   @override
   State<SessionFileBrowser> createState() => _SessionFileBrowserState();
 }
@@ -152,6 +155,97 @@ class _SessionFileBrowserState extends State<SessionFileBrowser> {
       }
     } finally {
       if (_current(token)) setState(() => busy = false);
+    }
+  }
+
+  Future<void> _download(BrowserEntry entry) async {
+    final folder = page;
+    if (!widget.active || busy || uploading || !committed || folder == null) {
+      return;
+    }
+    final token = ++epoch;
+    final execute = request;
+    setState(() {
+      busy = true;
+      error = null;
+      message = 'Downloading ${entry.name}…';
+    });
+    try {
+      final bytes = await downloadBrowserFile(
+        execute,
+        folder,
+        entry,
+        isCurrent: () => _current(token),
+      );
+      if (!mounted || !_current(token)) return;
+      final export =
+          widget.saveFile ??
+          (BuildContext c, String n, Uint8List b) =>
+              saveDownloadedFile(c, n, b, isCurrent: () => _current(token));
+      final saved = await export(context, entry.name, bytes);
+      if (_current(token)) {
+        setState(
+          () => message = saved ? 'Download exported: ${entry.name}.' : null,
+        );
+      }
+    } catch (e) {
+      if (_current(token)) {
+        setState(() {
+          message = null;
+          error = _problem(
+            e,
+            e is FormatException ? e.message : 'Could not download this file. Refresh the folder and try again.',
+          );
+        });
+      }
+    } finally {
+      if (_current(token)) setState(() => busy = false);
+    }
+  }
+
+  Future<void> _newFolder() async {
+    final folder = page, token = epoch;
+    if (!widget.active || busy || uploading || !committed || folder == null) {
+      return;
+    }
+    final name = await showDialog<String>(
+      context: context,
+      builder: (_) => _NewFolderDialog(destination: folder.path),
+    );
+    if (name == null ||
+        !_current(token) ||
+        !committed ||
+        !identical(page, folder)) {
+      return;
+    }
+    setState(() {
+      busy = true;
+      error = null;
+      message = null;
+    });
+    try {
+      await createBrowserFolder(request, folder, name);
+      if (!_current(token)) return;
+      setState(() {
+        busy = false;
+        if (name.startsWith('.')) hidden = true;
+      });
+      await _load(folder.path);
+      if (mounted &&
+          widget.active &&
+          page?.path == folder.path &&
+          error == null) {
+        setState(() => message = 'Created folder $name.');
+      }
+    } catch (e) {
+      if (_current(token)) {
+        setState(() {
+          busy = false;
+          error = e is FolderCreationUncertain
+              ? 'Folder creation could not be confirmed. Check the destination before trying again.'
+              : _problem(e, 'Could not create this folder.');
+        });
+      }
     }
   }
 
@@ -355,13 +449,22 @@ class _SessionFileBrowserState extends State<SessionFileBrowser> {
     final folder = page, document = preview;
     final enabled = widget.active && !busy && !uploading;
     if (document != null) {
+      final previewEntry = folder?.entries
+          .where(
+            (e) =>
+                e.name == document.file.name &&
+                e.revision == document.file.revision,
+          )
+          .firstOrNull;
       return Column(
         children: [
           Row(
             children: [
               IconButton(
                 tooltip: 'Back to files',
-                onPressed: () => setState(() => preview = null),
+                onPressed: !enabled
+                    ? null
+                    : () => setState(() => preview = null),
                 icon: const Icon(Icons.arrow_back, size: 18),
               ),
               Expanded(
@@ -371,8 +474,24 @@ class _SessionFileBrowserState extends State<SessionFileBrowser> {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
+              if (previewEntry != null)
+                IconButton(
+                  tooltip: 'Download ${previewEntry.name}',
+                  onPressed: enabled && committed
+                      ? () => unawaited(_download(previewEntry))
+                      : null,
+                  icon: const Icon(Icons.download_outlined, size: 19),
+                ),
             ],
           ),
+          if (error != null || message != null)
+            Padding(
+              padding: const EdgeInsets.all(8),
+              child: Text(
+                error ?? message!,
+                style: const TextStyle(fontSize: 11),
+              ),
+            ),
           Expanded(
             child: ProjectFileViewer(
               key: ValueKey(document.file.id),
@@ -454,6 +573,18 @@ class _SessionFileBrowserState extends State<SessionFileBrowser> {
                         ),
                       ],
                       icon: const Icon(Icons.more_horiz, size: 18),
+                    ),
+                    IconButton(
+                      key: const ValueKey('browser-new-folder'),
+                      tooltip: 'New folder',
+                      onPressed:
+                          enabled && committed && widget.session.inputEnabled
+                          ? () => unawaited(_newFolder())
+                          : null,
+                      icon: const Icon(
+                        Icons.create_new_folder_outlined,
+                        size: 19,
+                      ),
                     ),
                     IconButton(
                       tooltip: 'Upload files',
@@ -663,6 +794,17 @@ class _SessionFileBrowserState extends State<SessionFileBrowser> {
                                 entry.kind == 'directory' ||
                                     entry.kind == 'link'
                                 ? const Icon(Icons.chevron_right, size: 17)
+                                : entry.kind == 'file'
+                                ? IconButton(
+                                    tooltip: 'Download ${entry.name}',
+                                    onPressed: enabled && committed
+                                        ? () => unawaited(_download(entry))
+                                        : null,
+                                    icon: const Icon(
+                                      Icons.download_outlined,
+                                      size: 19,
+                                    ),
+                                  )
                                 : null,
                             onTap: () => unawaited(_open(entry)),
                           );
@@ -687,4 +829,66 @@ class _SessionFileBrowserState extends State<SessionFileBrowser> {
       ),
     );
   }
+}
+
+class _NewFolderDialog extends StatefulWidget {
+  const _NewFolderDialog({required this.destination});
+  final String destination;
+  @override
+  State<_NewFolderDialog> createState() => _NewFolderDialogState();
+}
+
+class _NewFolderDialogState extends State<_NewFolderDialog> {
+  final name = TextEditingController();
+  String? error;
+  @override
+  void dispose() {
+    name.dispose();
+    super.dispose();
+  }
+
+  void submit() {
+    if (!browserFolderName(name.text)) {
+      setState(() => error = 'Enter a folder name without slashes.');
+      return;
+    }
+    Navigator.of(context).pop(name.text);
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('New folder'),
+    content: SizedBox(
+      width: 360,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            widget.destination,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            key: const ValueKey('new-folder-name'),
+            controller: name,
+            autofocus: true,
+            decoration: InputDecoration(
+              labelText: 'Folder name',
+              errorText: error,
+            ),
+            onSubmitted: (_) => submit(),
+          ),
+        ],
+      ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.of(context).pop(),
+        child: const Text('Cancel'),
+      ),
+      FilledButton(onPressed: submit, child: const Text('Create')),
+    ],
+  );
 }

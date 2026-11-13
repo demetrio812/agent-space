@@ -1417,6 +1417,38 @@ class AppController extends ChangeNotifier {
     return result;
   }
 
+  Future<Uint8List> downloadProjectFile(
+    SessionInfo target,
+    String scope,
+    ProjectFile file,
+  ) async {
+    final backend = _backend, generation = _generation;
+    if (!dictationTargetIsCurrent(target, generation)) {
+      throw SessionUnavailable();
+    }
+    Uint8List result;
+    if (backend is ProjectDownloadBackend) {
+      result = await (backend as ProjectDownloadBackend).downloadProjectFile(
+        target,
+        scope,
+        file,
+      );
+    } else {
+      final doc = await readProjectFile(target, scope, file.id);
+      if (doc.revision != file.revision) {
+        throw SessionUnavailable(
+          'The document changed. Refresh before downloading.',
+        );
+      }
+      result = Uint8List.fromList(utf8.encode(doc.text));
+    }
+    if (!identical(backend, _backend) ||
+        !dictationTargetIsCurrent(target, generation)) {
+      throw SessionUnavailable();
+    }
+    return result;
+  }
+
   Future<ProjectDocument> readProjectFile(
     SessionInfo target,
     String scope,

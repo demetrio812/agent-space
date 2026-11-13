@@ -48,7 +48,7 @@ func validateBridgeEnvelope(_ row:[String:Any],configuration:BridgeConfiguration
     return text.range(of:pattern,options:.regularExpression) != nil
   }
   let fields=Set(["type","protocol","nonce","lane","id","op","payload","route"])
-  let operations:[String:Set<String>]=["discovery":["fs.list","fs.read","catalog","machines","chat.read","files.list","files.read","health"],"input":["input","send","chat.send","rename","close","create","workspace.create","workspace.rename","workspace.close","health"],"streams":["observe","resize","scroll","click","cancel","health"],"transfer":["fs.begin","fs.chunk","fs.finish","fs.cancel","image.begin","image.chunk","image.finish","image.cancel","health"]]
+  let operations:[String:Set<String>]=["discovery":["fs.list","fs.read","catalog","machines","chat.read","files.list","files.read","files.download","health"],"input":["input","send","chat.send","rename","close","create","workspace.create","workspace.rename","workspace.close","health"],"streams":["observe","resize","scroll","click","cancel","health"],"transfer":["fs.download","fs.mkdir","fs.begin","fs.chunk","fs.finish","fs.cancel","image.begin","image.chunk","image.finish","image.cancel","health"]]
   guard Set(row.keys).isSubset(of:fields), row["type"] as? String=="request",
         row["protocol"] as? String=="agentspace-bridge-v2", row["nonce"] as? String==configuration.nonce,
         row["lane"] as? String==configuration.lane, match(row["id"],#"^[1-9][0-9]{0,15}$"#),
@@ -86,6 +86,10 @@ func validateBridgeEnvelope(_ row:[String:Any],configuration:BridgeConfiguration
   switch op {
   case "fs.list":
     guard Set(payload.keys)==Set(["path"]),browserPath(payload["path"],initial:true) else { throw HelperFault(message:"Invalid folder request.") }
+  case "fs.download":
+    guard Set(payload.keys)==Set(["path","scope","name","revision","offset"]),browserPath(payload["path"]),browserName(payload["name"]),match(payload["scope"],#"^[0-9a-f]{64}$"#),match(payload["revision"],#"^[0-9a-f]{64}$"#),let offset=bridgeInteger(payload["offset"]),(0...33554432).contains(offset) else {throw HelperFault(message:"Invalid download request.")}
+  case "fs.mkdir":
+    guard Set(payload.keys)==Set(["path","scope","name"]),browserPath(payload["path"]),browserName(payload["name"]),match(payload["scope"],#"^[0-9a-f]{64}$"#),let name=payload["name"] as? String,!name.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty,!name.hasPrefix(".agentspace-upload-") else {throw HelperFault(message:"Invalid folder name.")}
   case "fs.read","fs.begin":
     let fields:Set<String> = op=="fs.read" ? ["path","scope","name","revision"] : ["path","scope","name","size","sha256"]
     guard Set(payload.keys)==fields,browserPath(payload["path"]),browserName(payload["name"]),match(payload["scope"],#"^[0-9a-f]{64}$"#) else { throw HelperFault(message:"Invalid file request.") }
@@ -102,7 +106,7 @@ func validateBridgeEnvelope(_ row:[String:Any],configuration:BridgeConfiguration
     guard Set(payload.keys)==Set(["token"]),match(payload["token"],#"^[0-9a-f]{32}$"#) else { throw HelperFault(message:"Invalid upload token.") }
   case "files.list":
     guard payload.isEmpty else { throw HelperFault(message:"Invalid project file listing.") }
-  case "files.read":
+  case "files.read","files.download":
     guard Set(payload.keys)==Set(["scope","file"]),["scope","file"].allSatisfy({ match(payload[$0],#"^[0-9a-f]{64}$"#) }) else { throw HelperFault(message:"Invalid project file read.") }
   case "chat.read":
     let uuid=#"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"#

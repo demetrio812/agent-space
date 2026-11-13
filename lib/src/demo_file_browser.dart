@@ -13,6 +13,7 @@ class DemoFileBrowser {
   final Future<ProjectDocument> Function(SessionInfo, String, String) read;
   final saved = <String, Map<String, Uint8List>>{},
       pending = <String, Map<String, dynamic>>{};
+  final directories = <String>{};
   int counter = 0;
   static const project = '/home/demo/projects/orbit-api';
   String _scope(String path) =>
@@ -61,11 +62,18 @@ class DemoFileBrowser {
       directory('Downloads');
     } else if (path == '/home/demo/projects') {
       directory('orbit-api');
-    } else if (path != '/home/demo/Downloads') {
+    } else if (path != '/home/demo/Downloads' && !directories.contains(path)) {
       throw SessionUnavailable('This Demo folder does not exist.');
     }
     for (final e in (saved[path] ?? <String, Uint8List>{}).entries) {
       result[e.key] = ('file', e.value);
+    }
+    final prefix = path == '/' ? '/' : '$path/';
+    for (final child in directories) {
+      if (child.startsWith(prefix) &&
+          !child.substring(prefix.length).contains('/')) {
+        directory(child.substring(prefix.length));
+      }
     }
     return result;
   }
@@ -76,7 +84,11 @@ class DemoFileBrowser {
     Map<String, dynamic> p,
   ) async {
     validateBrowserPayload(op, p);
-    if (op == 'fs.list' || op == 'fs.read' || op == 'fs.begin') {
+    if (op == 'fs.list' ||
+        op == 'fs.read' ||
+        op == 'fs.begin' ||
+        op == 'fs.mkdir' ||
+        op == 'fs.download') {
       final raw = p['path'] as String;
       final path = Uri(
         path: raw == ''
@@ -107,6 +119,33 @@ class DemoFileBrowser {
       }
       if (p['scope'] != scope) {
         throw FileRequestRejected('The Demo folder changed.');
+      }
+      if (op == 'fs.download') {
+        final entry = entries[p['name']], offset = p['offset'] as int;
+        if (entry == null ||
+            entry.$1 != 'file' ||
+            payloadDigest(entry.$2) != p['revision'] ||
+            offset > entry.$2.length) {
+          throw FileRequestRejected('The Demo file changed.');
+        }
+        final end = (offset + 262144).clamp(0, entry.$2.length);
+        return {
+          'bytes': base64Encode(entry.$2.sublist(offset, end)),
+          'offset': offset,
+          'size': entry.$2.length,
+          'eof': end == entry.$2.length,
+        };
+      }
+      if (op == 'fs.mkdir') {
+        final name = p['name'] as String;
+        if (entries.containsKey(name)) {
+          throw FileRequestRejected(
+            'An item with this name already exists. Choose a different name.',
+          );
+        }
+        final child = _child(canonical, name);
+        directories.add(child);
+        return {'created': true, 'path': child};
       }
       if (op == 'fs.read') {
         final name = p['name'] as String, entry = entries[name];
@@ -207,6 +246,7 @@ class DemoFileBrowser {
   }
 
   void close() {
+    directories.clear();
     pending.clear();
     saved.clear();
   }

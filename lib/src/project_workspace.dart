@@ -2,6 +2,9 @@ import 'session_file_browser.dart';
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
+
+import 'file_download.dart';
 
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -20,7 +23,9 @@ class ProjectWorkspace extends StatefulWidget {
     required this.session,
     required this.active,
     required this.builder,
+    this.saveFile,
   });
+  final Future<bool> Function(BuildContext, String, Uint8List)? saveFile;
   final AppController app;
   final SessionInfo session;
   final bool active;
@@ -410,6 +415,55 @@ class _ProjectWorkspaceState extends State<ProjectWorkspace> {
     );
   }
 
+  final downloading = <String>{};
+  Future<void> _download(ProjectFile file) async {
+    final page = manifest, token = epoch;
+    if (!running ||
+        !preference.visible ||
+        page == null ||
+        downloading.contains(file.id)) {
+      return;
+    }
+    setState(() => downloading.add(file.id));
+    try {
+      final bytes = await widget.app.downloadProjectFile(
+        widget.session,
+        page.scope,
+        file,
+      );
+      if (!mounted || token != epoch || !running || !preference.visible) return;
+      final export =
+          widget.saveFile ??
+          (BuildContext c, String n, Uint8List b) => saveDownloadedFile(
+            c,
+            n,
+            b,
+            isCurrent: () =>
+                mounted && token == epoch && running && preference.visible,
+          );
+      final saved = await export(context, file.name, bytes);
+      if (mounted && token == epoch && running && saved) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Download exported: ${file.name}.')),
+        );
+      }
+    } catch (e) {
+      if (mounted && token == epoch && running) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              e is ConnectionFailure
+                  ? e.message
+                  : 'Could not download this document.',
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => downloading.remove(file.id));
+    }
+  }
+
   Widget _row(ProjectFile file) => ListTile(
     key: ValueKey('project-file-${file.id}'),
     dense: true,
@@ -427,7 +481,13 @@ class _ProjectWorkspaceState extends State<ProjectWorkspace> {
       overflow: TextOverflow.ellipsis,
       style: TextStyle(fontSize: 10, color: context.mutedInk),
     ),
-    trailing: const Icon(Icons.chevron_right, size: 17),
+    trailing: IconButton(
+      tooltip: 'Download ${file.name}',
+      onPressed: downloading.contains(file.id)
+          ? null
+          : () => unawaited(_download(file)),
+      icon: const Icon(Icons.download_outlined, size: 19),
+    ),
     onTap: () => _open(file),
   );
   Widget _list() {
@@ -523,6 +583,16 @@ class _ProjectWorkspaceState extends State<ProjectWorkspace> {
     final doc = documents[file.id], problem = errors[file.id];
     return Column(
       children: [
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton.icon(
+            onPressed: downloading.contains(file.id)
+                ? null
+                : () => unawaited(_download(file)),
+            icon: const Icon(Icons.download_outlined, size: 17),
+            label: const Text('Download'),
+          ),
+        ),
         if (problem != null)
           Padding(
             padding: const EdgeInsets.all(12),

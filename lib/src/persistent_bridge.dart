@@ -214,6 +214,8 @@ class PersistentBridge {
   }) async {
     final allowed = switch (kind) {
       BridgeLane.transfer => const {
+        'fs.mkdir',
+        'fs.download',
         'fs.begin',
         'fs.chunk',
         'fs.finish',
@@ -231,7 +233,7 @@ class PersistentBridge {
         'machines',
         'chat.read',
         'files.list',
-        'files.read',
+        'files.read', 'files.download',
         'health',
       },
       BridgeLane.input => const {

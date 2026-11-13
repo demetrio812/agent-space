@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'models.dart';
 
@@ -21,7 +22,7 @@ abstract interface class ProjectFilesBackend {
 
 void validateProjectPayload(String op, Map<String, dynamic> value) {
   if (op == 'files.list' && value.isEmpty) return;
-  if (op == 'files.read' &&
+  if ((op == 'files.read' || op == 'files.download') &&
       value.length == 2 &&
       _hash(value['scope']) &&
       _hash(value['file'])) {
@@ -182,4 +183,12 @@ class ProjectPanelLayout {
           : 'files',
     );
   }
+}
+
+abstract interface class ProjectDownloadBackend {
+  Future<Uint8List> downloadProjectFile(
+    SessionInfo session,
+    String scope,
+    ProjectFile file,
+  );
 }

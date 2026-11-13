@@ -197,12 +197,12 @@ class LocalWorker:
         if op.startswith('fs.'):
             validate_browser(op,payload)
             route=validate_management_route('rename',row.get('route'));check_worker_origin(self.config,route)
-            if op not in ('fs.list','fs.read') and not self.config.get('allowInput',True):raise BridgeRejected('unsupported')
+            if op not in ('fs.list','fs.read','fs.download') and not self.config.get('allowInput',True):raise BridgeRejected('unsupported')
             return self.file_browser.operation(op,route,payload)
-        if op in ('files.list','files.read'):
+        if op in ('files.list','files.read','files.download'):
             validate_files(op,payload)
             route=validate_management_route('rename',row.get('route')); check_worker_origin(self.config,route)
-            return self.project_files.listing(route) if op=='files.list' else self.project_files.read(route,payload)
+            return self.project_files.listing(route) if op=='files.list' else self.project_files.read(route,payload,download=op=='files.download')
         if op in ('chat.read','chat.send'):
             validate_chat(op,payload)
             route=validate_management_route('rename',row.get('route')); check_worker_origin(self.config,route)

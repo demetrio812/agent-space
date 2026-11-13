@@ -1,3 +1,4 @@
+import base64
 import os
 from pathlib import Path
 import tempfile
@@ -24,6 +25,14 @@ class ProjectFileTests(unittest.TestCase):
         self.root = Path(self.temp.name).resolve(); (self.root/'.git').mkdir()
         self.api = PaneApi(self.root); self.reader = ProjectFiles(self.api)
         self.route = {'terminal':'t1','pane':'p1','generation':'a'*64}
+    def test_document_download_preserves_original_bom_and_line_endings(self):
+        data=b'\xef\xbb\xbf# Original\r\n'
+        (self.root/'README.md').write_bytes(data)
+        page=self.reader.listing(self.route);entry=page['files'][0]
+        result=self.reader.read(self.route,{'scope':page['scope'],'file':entry['id']},download=True)
+        self.assertEqual(base64.b64decode(result['bytes']),data)
+        self.assertEqual(result['revision'],entry['revision'])
+
     def put(self, name, text='document'):
         path = self.root/name; path.parent.mkdir(parents=True, exist_ok=True); path.write_text(text); return path
     def test_files_specs_and_html_are_discovered_separately(self):

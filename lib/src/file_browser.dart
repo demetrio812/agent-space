@@ -38,10 +38,16 @@ bool browserPath(Object? path, {bool initial = false}) =>
     utf8.encode(path).length <= 4096 &&
     !RegExp(r'[\x00-\x1f\x7f-\x9f]').hasMatch(path);
 bool _hash(Object? value) => value is String && projectHash.hasMatch(value);
+bool browserFolderName(Object? value) =>
+    browserName(value) &&
+    (value as String).trim().isNotEmpty &&
+    !value.startsWith('.agentspace-upload-');
 String payloadDigest(Uint8List bytes) => sha256.convert(bytes).toString();
 void validateBrowserPayload(String op, Map<String, dynamic> p) {
   final fields = switch (op) {
     'fs.list' => {'path'},
+    'fs.download' => {'path', 'scope', 'name', 'revision', 'offset'},
+    'fs.mkdir' => {'path', 'scope', 'name'},
     'fs.read' => {'path', 'scope', 'name', 'revision'},
     'fs.begin' => {'path', 'scope', 'name', 'size', 'sha256'},
     'fs.chunk' => {'token', 'offset', 'bytes'},
@@ -50,15 +56,30 @@ void validateBrowserPayload(String op, Map<String, dynamic> p) {
   };
   bool bad() => p.length != fields.length || !fields.every(p.containsKey);
   if (bad()) throw ArgumentError('Invalid file request.');
-  if ({'fs.list', 'fs.read', 'fs.begin'}.contains(op)) {
+  if ({
+    'fs.list',
+    'fs.read',
+    'fs.begin',
+    'fs.mkdir',
+    'fs.download',
+  }.contains(op)) {
     if (!browserPath(p['path'], initial: op == 'fs.list')) {
       throw ArgumentError('Choose an absolute folder path.');
     }
     if (op != 'fs.list' && (!browserName(p['name']) || !_hash(p['scope']))) {
       throw ArgumentError('Invalid file destination.');
     }
-    if (op == 'fs.read' && !_hash(p['revision'])) {
+    if (op == 'fs.mkdir' && !browserFolderName(p['name'])) {
+      throw ArgumentError('Choose a folder name without slashes.');
+    }
+    if ((op == 'fs.read' || op == 'fs.download') && !_hash(p['revision'])) {
       throw ArgumentError('Invalid file revision.');
+    }
+    if (op == 'fs.download' &&
+        (p['offset'] is! int ||
+            p['offset'] < 0 ||
+            p['offset'] > maxUploadBytes)) {
+      throw ArgumentError('Invalid download offset.');
     }
     if (op == 'fs.begin' &&
         (p['size'] is! int ||
@@ -285,4 +306,86 @@ class BrowserUpload {
       _busy = false;
     }
   }
+}
+
+class FolderCreationUncertain implements Exception {
+  const FolderCreationUncertain();
+}
+
+Future<String> createBrowserFolder(
+  BrowserRequest request,
+  BrowserPage parent,
+  String name,
+) async {
+  final payload = {'path': parent.path, 'scope': parent.scope, 'name': name};
+  validateBrowserPayload('fs.mkdir', payload);
+  try {
+    final result = await request('fs.mkdir', payload);
+    if (result['created'] != true || result['path'] != parent.child(name)) {
+      throw const FormatException('Invalid folder receipt.');
+    }
+    return result['path'] as String;
+  } on FileRequestRejected {
+    rethrow;
+  } catch (_) {
+    throw const FolderCreationUncertain();
+  }
+}
+
+Future<Uint8List> downloadBrowserFile(
+  BrowserRequest request,
+  BrowserPage parent,
+  BrowserEntry entry, {
+  bool Function()? isCurrent,
+}) async {
+  if (entry.kind != 'file' || entry.size > maxUploadBytes) {
+    throw const FormatException(
+      'Choose regular files up to 32 MiB to download.',
+    );
+  }
+  final data = BytesBuilder(copy: false);
+  do {
+    if (isCurrent?.call() == false) {
+      throw const FormatException(
+        'Download cancelled because the session changed.',
+      );
+    }
+    final offset = data.length;
+    final r = await request('fs.download', {
+      'path': parent.path,
+      'scope': parent.scope,
+      'name': entry.name,
+      'revision': entry.revision,
+      'offset': offset,
+    });
+    if (isCurrent?.call() == false) {
+      throw const FormatException(
+        'Download cancelled because the session changed.',
+      );
+    }
+    if (r['bytes'] is! String ||
+        (r['bytes'] as String).length > 349528 ||
+        r['size'] != entry.size ||
+        r['offset'] != offset ||
+        r['eof'] is! bool) {
+      throw const FormatException('Invalid download response.');
+    }
+    final bytes = base64Decode(r['bytes'] as String);
+    if (base64Encode(bytes) != r['bytes'] ||
+        bytes.length > 262144 ||
+        data.length + bytes.length > entry.size ||
+        (bytes.isEmpty && r['eof'] != true)) {
+      throw const FormatException('Invalid download response.');
+    }
+    data.add(bytes);
+    if (r['eof'] == true) {
+      if (data.length != entry.size) {
+        throw const FormatException('The file download was incomplete.');
+      }
+      return data.takeBytes();
+    }
+    if (data.length == entry.size) {
+      throw const FormatException('Invalid download response.');
+    }
+  } while (true);
 }

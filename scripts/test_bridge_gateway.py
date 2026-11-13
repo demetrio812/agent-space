@@ -30,6 +30,7 @@ class ApiPeer:
     def request(self, row, on_event=None, timeout=6):
         if row['op'].startswith('fs.'):return self.files.operation(row['op'],row['route'],row['payload'])
         if row['op']=='files.list': return ProjectFiles(self.api).listing(row['route'])
+        if row['op']=='files.download': return ProjectFiles(self.api).read(row['route'],row['payload'],download=True)
         if row['op']=='files.read': return ProjectFiles(self.api).read(row['route'],row['payload'])
         if row['op']=='chat.read':
             return ConversationReader(self.api,projects=self.api.__dict__.get('projects',self.connector.test.root/'empty-projects')).read(row['route'],row['payload'])
@@ -121,6 +122,8 @@ class GatewayTests(unittest.TestCase):
         page=worker.operation({'op':'files.list','route':route,'payload':{}})
         self.assertEqual([f['name'] for f in page['files']],['README.md'])
         result=worker.operation({'op':'files.read','route':route,'payload':{'scope':page['scope'],'file':page['files'][0]['id']}})
+        download=worker.operation({'op':'files.download','route':route,'payload':{'scope':page['scope'],'file':page['files'][0]['id']}})
+        self.assertEqual(__import__('base64').b64decode(download['bytes']).decode('utf-8'),result['text'])
         self.assertEqual(result['text'],'Beta')
         self.assertFalse(self.herdrs[a.id].calls)
         self.assertFalse(any(c['method'].startswith('pane.send') for c in self.herdrs[b.id].calls))
@@ -137,6 +140,12 @@ class GatewayTests(unittest.TestCase):
         worker.operation({'op':'fs.chunk','route':route,'payload':{'token':token,'offset':0,'bytes':base64.b64encode(data).decode()}})
         result=worker.operation({'op':'fs.finish','route':route,'payload':{'token':token}})
         self.assertTrue(result['uploaded']);self.assertEqual((self.herdrs[b.id].root/'uploaded.bin').read_bytes(),data)
+        created=worker.operation({'op':'fs.mkdir','route':route,'payload':{'path':page['path'],'scope':page['scope'],'name':'Peer folder'}})
+        refreshed=worker.operation({'op':'fs.list','route':route,'payload':{'path':page['path']}})
+        entry=next(e for e in refreshed['entries'] if e['name']=='uploaded.bin')
+        downloaded=worker.operation({'op':'fs.download','route':route,'payload':{'path':page['path'],'scope':refreshed['scope'],'name':entry['name'],'revision':entry['revision'],'offset':0}})
+        self.assertEqual(base64.b64decode(downloaded['bytes']),data)
+        self.assertTrue(created['created']);self.assertTrue((self.herdrs[b.id].root/'Peer folder').is_dir());self.assertFalse((self.herdrs[a.id].root/'Peer folder').exists())
         self.assertFalse((self.herdrs[a.id].root/'uploaded.bin').exists());self.assertFalse(self.herdrs[a.id].calls)
         self.assertFalse(any(c['method'].startswith('pane.send') for c in self.herdrs[b.id].calls))
 

@@ -526,16 +526,29 @@ class GatewayWorker(LocalWorker):
         op=row['op']; route=row.get('route')
         if op.startswith('fs.'):
             validate_browser(op,row['payload']);validate_management_route('rename',route)
-            if op not in ('fs.list','fs.read') and not self.config.get('allowInput',True):raise BridgeRejected('unsupported')
+            if op not in ('fs.list','fs.read','fs.download') and not self.config.get('allowInput',True):raise BridgeRejected('unsupported')
             if route['machine']=='gateway':return super().operation(row)
-            if op not in ('fs.list','fs.read'):return self.file_transfers.operation(op,route,row['payload'])
+            if op in ('fs.mkdir','fs.download'):
+                machine=self.registry.require(route)
+                with self.pool.lease(machine,'transfer',self.priority|{machine.id}) as worker:
+                    self.registry.require(route)
+                    if self.closed.is_set():raise BridgeRejected('offline')
+                    try:
+                        result=worker.request({'op':op,'route':route,'payload':row['payload']},timeout=30)
+                        self.registry.require(route)
+                        if op=='fs.mkdir' and result.get('created') is not True:raise BridgeRejected('folder_uncertain')
+                        return result
+                    except BridgeRejected as error:
+                        if op=='fs.mkdir' and error.code in ('offline','timeout','route_changed','generation_changed'):raise BridgeRejected('folder_uncertain')
+                        raise
+            if op not in ('fs.list','fs.read','fs.download'):return self.file_transfers.operation(op,route,row['payload'])
             machine=self.registry.require(route)
             with self.pool.lease(machine,'discovery',self.priority|{machine.id}) as worker:
                 self.registry.require(route)
                 if self.closed.is_set():raise BridgeRejected('offline')
                 result=worker.request({'op':op,'route':route,'payload':row['payload']},timeout=30)
                 self.registry.require(route);return result
-        if op in ('files.list','files.read'):
+        if op in ('files.list','files.read','files.download'):
             validate_files(op,row['payload']); validate_management_route('rename',route)
             if route['machine']=='gateway': return super().operation(row)
             machine=self.registry.require(route)

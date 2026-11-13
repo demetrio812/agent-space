@@ -31,13 +31,15 @@ def path_ok(path,initial=False):
     return isinstance(path,str) and (initial and path in ('','~') or path.startswith('/')) and len(path.encode('utf-8',errors='replace'))<=4096 and not any(ord(c)<32 or 127<=ord(c)<160 or 0xd800<=ord(c)<=0xdfff for c in path)
 
 def validate_payload(op,p):
-    fields={'fs.list':{'path'},'fs.read':{'path','scope','name','revision'},'fs.begin':{'path','scope','name','size','sha256'},
+    fields={'fs.download':{'path','scope','name','revision','offset'},'fs.mkdir':{'path','scope','name'},'fs.list':{'path'},'fs.read':{'path','scope','name','revision'},'fs.begin':{'path','scope','name','size','sha256'},
             'fs.chunk':{'token','offset','bytes'},'fs.finish':{'token'},'fs.cancel':{'token'}}
     if not isinstance(p,dict) or op not in fields or set(p)!=fields[op]:raise BridgeRejected('invalid_request')
-    if op in ('fs.list','fs.read','fs.begin'):
+    if op in ('fs.list','fs.read','fs.begin','fs.mkdir','fs.download'):
         if not path_ok(p['path'],op=='fs.list'):raise BridgeRejected('invalid_request')
         if op!='fs.list' and (not name_ok(p['name']) or not isinstance(p['scope'],str) or not HASH.fullmatch(p['scope'])):raise BridgeRejected('invalid_request')
-        if op=='fs.read' and (not isinstance(p['revision'],str) or not HASH.fullmatch(p['revision'])):raise BridgeRejected('invalid_request')
+        if op=='fs.mkdir' and (not p['name'].strip() or p['name'].startswith('.agentspace-upload-')):raise BridgeRejected('invalid_request')
+        if op in ('fs.read','fs.download') and (not isinstance(p['revision'],str) or not HASH.fullmatch(p['revision'])):raise BridgeRejected('invalid_request')
+        if op=='fs.download' and (type(p['offset']) is not int or not 0<=p['offset']<=MAX_UPLOAD):raise BridgeRejected('invalid_request')
         if op=='fs.begin' and (type(p['size']) is not int or not 0<=p['size']<=MAX_UPLOAD or not isinstance(p['sha256'],str) or not HASH.fullmatch(p['sha256'])):raise BridgeRejected('invalid_request')
     else:
         if not isinstance(p['token'],str) or not TOKEN.fullmatch(p['token']):raise BridgeRejected('invalid_request')
@@ -145,6 +147,40 @@ class FileBrowser:
                     'document':{'scope':scope,'file':identifier,'revision':p['revision'],'text':text}}
             if len(json.dumps(result,ensure_ascii=True).encode())>1024*1024:raise BridgeRejected('file_too_large')
             return result
+    def download(self,route,p):
+        with self.context(route,p['path']) as (path,fd,scope):
+            if scope!=p['scope']:raise BridgeRejected('file_changed')
+            try:source=os.open(p['name'],os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK,dir_fd=fd)
+            except PermissionError:raise BridgeRejected('file_permission')
+            except OSError:raise BridgeRejected('file_unavailable')
+            with os.fdopen(source,'rb') as stream:
+                before=os.fstat(stream.fileno())
+                if not stat.S_ISREG(before.st_mode) or revision(before)!=p['revision']:raise BridgeRejected('file_changed')
+                if before.st_size>MAX_UPLOAD:raise BridgeRejected('file_download_too_large')
+                if p['offset']>before.st_size:raise BridgeRejected('invalid_request')
+                stream.seek(p['offset']);data=stream.read(MAX_CHUNK)
+                if revision(os.fstat(stream.fileno()))!=p['revision'] or revision(os.stat(p['name'],dir_fd=fd,follow_symlinks=False))!=p['revision']:raise BridgeRejected('file_changed')
+            self._check(route,path,scope)
+            return {'bytes':base64.b64encode(data).decode(),'offset':p['offset'],'size':before.st_size,'eof':p['offset']+len(data)==before.st_size}
+
+    def mkdir(self,route,p):
+        created=False
+        with self.context(route,p['path']) as (path,fd,scope):
+            if scope!=p['scope']:raise BridgeRejected('file_changed')
+            self._check(route,path,scope)
+            try:
+                # Exactly one component, normal account permissions/umask;
+                # mkdir atomically rejects files, directories and symlinks.
+                os.mkdir(p['name'],0o777,dir_fd=fd);created=True
+                self._check(route,path,scope)
+                return {'created':True,'path':str(path/p['name'])}
+            except FileExistsError:raise BridgeRejected('file_exists')
+            except Exception as error:
+                if created:raise BridgeRejected('folder_uncertain')
+                if isinstance(error,PermissionError):raise BridgeRejected('file_permission')
+                if isinstance(error,OSError):raise BridgeRejected('file_unavailable')
+                raise
+
     def discard(self,token):
         item=self.pending.pop(token,None)
         if item:
@@ -165,6 +201,8 @@ class FileBrowser:
         if self.closed:raise BridgeRejected('offline')
         if op=='fs.list':return self.listing(route,p)
         if op=='fs.read':return self.read(route,p)
+        if op=='fs.mkdir':return self.mkdir(route,p)
+        if op=='fs.download':return self.download(route,p)
         with self.lock:
             if self.closed:raise BridgeRejected('offline')
             self.reap()

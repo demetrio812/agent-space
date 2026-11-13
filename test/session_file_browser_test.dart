@@ -33,6 +33,17 @@ class BrowserFixture extends ProjectFixture implements FileBrowserBackend {
       if (held != null) return held!.future;
       return browserPage(p['path'] == '' ? '/project' : p['path'] as String);
     }
+    if (op == 'fs.download') {
+      return {
+        'offset': 0,
+        'bytes': 'aGVsbG8gd29ybGQh',
+        'size': 12,
+        'eof': true,
+      };
+    }
+    if (op == 'fs.mkdir') {
+      return {'created': true, 'path': "${p['path']}/${p['name']}"};
+    }
     if (op == 'fs.begin' && beginHold != null) return beginHold!.future;
     if (op == 'fs.begin') return {'token': 'b' * 32, 'offset': 0};
     if (op == 'fs.chunk') {
@@ -83,6 +94,104 @@ class UploadRaceFixture extends BrowserFixture {
 }
 
 void main() {
+  testWidgets('download exports selected file without typing or uploading', (
+    tester,
+  ) async {
+    final backend = BrowserFixture();
+    final app = AppController(
+      snapshot: AppSnapshot(),
+      store: WidgetStore(),
+      backendFactory: (_) => backend,
+    );
+    await app.start(polling: false);
+    app.select(backend.session.key.id);
+    final exports = <String>[];
+    try {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SessionFileBrowser(
+              app: app,
+              session: backend.session,
+              active: true,
+              saveFile: (_, name, bytes) async {
+                exports.add('$name:${String.fromCharCodes(bytes)}');
+                return true;
+              },
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.tap(find.byTooltip('Download README.md'));
+      await tester.pump();
+      expect(exports, ['README.md:hello world!']);
+      expect(backend.calls.last, 'fs.download:/project');
+      expect(backend.input, isEmpty);
+    } finally {
+      await tester.pumpWidget(const SizedBox());
+      await tester.runAsync(app.shutdown);
+    }
+  });
+
+  testWidgets(
+    'new folder uses displayed parent and refreshes without terminal input',
+    (tester) async {
+      final backend = BrowserFixture();
+      final app = AppController(
+        snapshot: AppSnapshot(),
+        store: WidgetStore(),
+        backendFactory: (_) => backend,
+      );
+      await app.start(polling: false);
+      app.select(backend.session.key.id);
+      try {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: SessionFileBrowser(
+                app: app,
+                session: backend.session,
+                active: true,
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+        await tester.tap(find.byKey(const ValueKey('browser-entry-docs')));
+        await tester.pump();
+        await tester.tap(find.byTooltip('New folder'));
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find.byKey(const ValueKey('new-folder-name')),
+          '../bad',
+        );
+        await tester.tap(find.text('Create'));
+        await tester.pump();
+        expect(
+          find.text('Enter a folder name without slashes.'),
+          findsOneWidget,
+        );
+        await tester.enterText(
+          find.byKey(const ValueKey('new-folder-name')),
+          'New folder',
+        );
+        await tester.tap(find.text('Create'));
+        await tester.pumpAndSettle();
+        expect(backend.calls.sublist(backend.calls.length - 2), [
+          'fs.mkdir:/project/docs',
+          'fs.list:/project/docs',
+        ]);
+        expect(find.text('Created folder New folder.'), findsOneWidget);
+        expect(backend.input, isEmpty);
+        expect(tester.takeException(), isNull);
+      } finally {
+        await tester.pumpWidget(const SizedBox());
+        await tester.runAsync(app.shutdown);
+      }
+    },
+  );
+
   testWidgets(
     'Documents replaces curated Files and computer Files is a separate tab',
     (tester) async {
