@@ -1337,6 +1337,20 @@ class AppController extends ChangeNotifier {
         current?.origin?.generation == target.origin?.generation;
   }
 
+  final _projectPanelFocus = <String, Set<Object>>{};
+  bool projectPanelHasFocus(String id) =>
+      _projectPanelFocus[id]?.isNotEmpty == true;
+  void setProjectPanelFocused(String id, Object owner, bool focused) {
+    if (focused) {
+      _projectPanelFocus.putIfAbsent(id, () => {}).add(owner);
+    } else {
+      _projectPanelFocus[id]?.remove(owner);
+      if (_projectPanelFocus[id]?.isEmpty == true) {
+        _projectPanelFocus.remove(id);
+      }
+    }
+  }
+
   bool get supportsProjectFiles => _backend is ProjectFilesBackend;
   void saveProjectPanel(String id, ProjectPanelLayout value) {
     if (!layout.projectPanels.containsKey(id) &&
@@ -1350,14 +1364,16 @@ class AppController extends ChangeNotifier {
   Future<ProjectManifest> listProjectFiles(SessionInfo target) async {
     final backend = _backend, generation = _generation;
     if (backend is! ProjectFilesBackend ||
-        !dictationTargetIsCurrent(target, generation))
+        !dictationTargetIsCurrent(target, generation)) {
       throw SessionUnavailable();
+    }
     final result = await (backend as ProjectFilesBackend).listProjectFiles(
       target,
     );
     if (!identical(backend, _backend) ||
-        !dictationTargetIsCurrent(target, generation))
+        !dictationTargetIsCurrent(target, generation)) {
       throw SessionUnavailable();
+    }
     return result;
   }
 
@@ -1368,8 +1384,9 @@ class AppController extends ChangeNotifier {
   ) async {
     final backend = _backend, generation = _generation;
     if (backend is! ProjectFilesBackend ||
-        !dictationTargetIsCurrent(target, generation))
+        !dictationTargetIsCurrent(target, generation)) {
       throw SessionUnavailable();
+    }
     final result = await (backend as ProjectFilesBackend).readProjectFile(
       target,
       scope,
@@ -1378,8 +1395,9 @@ class AppController extends ChangeNotifier {
     if (!identical(backend, _backend) ||
         !dictationTargetIsCurrent(target, generation) ||
         result.scope != scope ||
-        result.file != file)
+        result.file != file) {
       throw SessionUnavailable();
+    }
     return result;
   }
 
@@ -1427,6 +1445,7 @@ class AppController extends ChangeNotifier {
       return false;
     }
     final state = sendStates.putIfAbsent(id, SendState.new);
+    if (projectPanelHasFocus(id)) return false;
     if (conversationSession == null && _conversationComposers.containsKey(id)) {
       state.message = 'Use the Chat composer to send to this conversation.';
       notifyListeners();

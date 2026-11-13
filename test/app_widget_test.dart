@@ -8,6 +8,7 @@ import 'package:agentspace/src/app.dart';
 import 'package:agentspace/src/controller.dart';
 import 'package:agentspace/src/demo_backend.dart';
 import 'package:agentspace/src/storage.dart';
+import 'package:agentspace/src/project_files.dart';
 
 Future<AppController> createApp() async {
   final app = AppController(
@@ -16,6 +17,13 @@ Future<AppController> createApp() async {
     backendFactory: (_) => DemoBackend(),
   );
   await app.start(polling: false);
+  // Unrelated app checks use an explicitly closed panel; dedicated workspace
+  // tests cover first-discovery opening and saved visibility.
+  for (final session in app.sessions) {
+    app.layout.projectPanels[session.key.id] = ProjectPanelLayout(
+      visible: false,
+    );
+  }
   return app;
 }
 

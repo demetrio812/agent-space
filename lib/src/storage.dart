@@ -176,8 +176,9 @@ class WorkspaceLayout {
     }
     if (j['projectPanels'] is Map) {
       for (final e in (j['projectPanels'] as Map).entries.take(128)) {
-        if (e.key is String && SessionKey.decode(e.key) != null)
+        if (e.key is String && SessionKey.decode(e.key) != null) {
           result.projectPanels[e.key] = ProjectPanelLayout.fromJson(e.value);
+        }
       }
     }
     if (j['drafts'] is Map) {

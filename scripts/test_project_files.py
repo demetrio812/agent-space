@@ -43,6 +43,12 @@ class ProjectFileTests(unittest.TestCase):
         new=self.reader.listing(self.route); self.assertNotEqual(page['scope'],new['scope'])
         self.assertEqual(len({f['id'] for f in new['files']}),len(new['files']))
         with self.assertRaises(BridgeRejected): self.reader.read(self.route,{'scope':page['scope'],'file':item['id']})
+    def test_scope_includes_host_and_connection_identity(self):
+        self.put('README.md','same path on another computer')
+        first=self.reader.listing(self.route)
+        second=self.reader.listing({**self.route,'generation':'b'*64})
+        self.assertNotEqual(first['scope'],second['scope'])
+
     def test_symlinks_and_unlisted_paths_are_never_read(self):
         outside=self.root.parent/(self.root.name+'-private.md'); outside.write_text('private'); self.addCleanup(outside.unlink)
         (self.root/'linked.md').symlink_to(outside)

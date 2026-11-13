@@ -61,7 +61,7 @@ class ProjectFiles:
                 try:
                     info=os.fstat(fd); identities.append([str(root),info.st_dev,info.st_ino])
                 finally: os.close(fd)
-            return digest([str(cwd),identities]),cwd,roots
+            return digest([str(cwd),identities,[route.get(k) for k in ('machine','session','targetHash','generation')]]),cwd,roots
         except (OSError,ValueError,RuntimeError): raise BridgeRejected('file_unavailable')
 
     @staticmethod

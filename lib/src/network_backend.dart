@@ -490,8 +490,9 @@ class NetworkHerdrBackend
   @override
   Future<ProjectManifest> listProjectFiles(SessionInfo session) async {
     final current = _current(session), bridge = _bridge;
-    if (bridge == null || current.origin == null)
+    if (bridge == null || current.origin == null) {
       throw SessionUnavailable('Files require the bundled helper connection.');
+    }
     final result = await bridge.request(
       BridgeLane.discovery,
       'files.list',

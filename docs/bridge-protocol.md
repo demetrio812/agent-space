@@ -1,5 +1,11 @@
 # Persistent Herdr bridge
 
+## Read-only project documents
+
+Discovery now supports `files.list` with `{}` and `files.read` with `{scope,file}` (both lowercase SHA-256 references). Every operation carries an exact machine/session/target/generation/terminal/pane route and is revalidated around peer reads. There are no client paths or mutations. The host derives the current folder from Herdr and returns `{scope,folder,files,limited}`; each entry contains `{id,name,path,kind,section,feature,revision}`. Reads return `{scope,file,revision,text}`. Only the allowlisted discovered file may be opened; changing the folder or host identity invalidates the scope. Symlinks, nonregular/unowned files, invalid UTF-8 and oversized documents are rejected. Typed failures are `file_unavailable`, `file_changed`, `file_too_large` and `file_encoding`; none imply input dispatch.
+
+Catalogs are bounded to 128 documents, 64 feature directories, 2048 entries per directory, depth three and four seconds of discovery. Documents are at most 256 KiB and replies at most 1 MiB. No document text is written to preferences or app logs. Clients must stop polling closed/background panels and reject stale replies after pane/connection changes.
+
 AgentSpace connects to one gateway, then reads the enabled computers saved in that gateway's Herdr. Discovery is one hop: peers are destinations, never additional gateways. OpenSSH on the gateway uses its existing aliases, account keys and known hosts. Peer authentication is noninteractive and host-key checking is strict. AgentSpace does not change SSH configuration, copy peer credentials to the client, scan the LAN, or start/stop/upgrade Herdr.
 
 ## Requirements and cache

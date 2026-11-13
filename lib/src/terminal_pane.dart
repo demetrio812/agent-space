@@ -1,3 +1,4 @@
+import 'project_workspace.dart';
 import 'dictation_dialog.dart';
 import 'git_metadata_view.dart';
 import 'conversation_view.dart';
@@ -75,7 +76,11 @@ class _TerminalPaneState extends State<TerminalPane> {
   bool dictationOpen = false;
 
   Future<void> dictate() async {
-    if (dictationOpen || chatOpen) return;
+    if (dictationOpen ||
+        chatOpen ||
+        widget.app.projectPanelHasFocus(widget.session.key.id)) {
+      return;
+    }
     final session = widget.session, app = widget.app;
     final generation = app.dictationGeneration;
     dictationOpen = true;
@@ -104,6 +109,7 @@ class _TerminalPaneState extends State<TerminalPane> {
   KeyEventResult handleDictationShortcut(KeyEvent event) {
     if (!mounted ||
         chatOpen ||
+        widget.app.projectPanelHasFocus(widget.session.key.id) ||
         !widget.active ||
         defaultTargetPlatform != TargetPlatform.macOS ||
         !widget.app.snapshot.dictationShortcut.matches(event) ||
@@ -293,705 +299,742 @@ class _TerminalPaneState extends State<TerminalPane> {
         app.connectionState != ConnectionState.stale &&
         app.connectionState != ConnectionState.attention &&
         entry?.state != TerminalState.closed;
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final short = constraints.maxHeight < 280;
-        final compact = widget.compact || short;
-        return Column(
-          children: [
-            if (!widget.embedded && rows.length > 1 && !short)
-              Container(
-                height: 49,
-                color: context.tabs,
-                child: ReorderableListView.builder(
-                  scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 6,
-                  ),
-                  buildDefaultDragHandles: false,
-                  itemCount: rows.length,
-                  onReorderItem: app.reorderTabs,
-                  itemBuilder: (context, i) {
-                    final tab = rows[i], selected = tab.key == session.key;
-                    return SessionReorderStart(
-                      key: ValueKey('tab-${tab.key.id}'),
-                      index: i,
-                      enabled: app.layout.filter != 'recent',
-                      child: Container(
-                        width: 190,
-                        margin: const EdgeInsets.only(right: 6),
-                        decoration: BoxDecoration(
-                          color: selected ? context.panel : Colors.transparent,
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(
-                            color: selected ? context.accent : context.border,
+    return ProjectWorkspace(
+      key: ValueKey('project-workspace-${session.key.id}'),
+      app: app,
+      session: session,
+      active: widget.active && widget.visible,
+      builder: (toggleFiles, filesVisible, filesCovered) => LayoutBuilder(
+        builder: (context, constraints) {
+          final short = constraints.maxHeight < 280;
+          final compact = widget.compact || short || constraints.maxWidth < 760;
+          return Column(
+            children: [
+              if (!widget.embedded && rows.length > 1 && !short)
+                Container(
+                  height: 49,
+                  color: context.tabs,
+                  child: ReorderableListView.builder(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                    buildDefaultDragHandles: false,
+                    itemCount: rows.length,
+                    onReorderItem: app.reorderTabs,
+                    itemBuilder: (context, i) {
+                      final tab = rows[i], selected = tab.key == session.key;
+                      return SessionReorderStart(
+                        key: ValueKey('tab-${tab.key.id}'),
+                        index: i,
+                        enabled: app.layout.filter != 'recent',
+                        child: Container(
+                          width: 190,
+                          margin: const EdgeInsets.only(right: 6),
+                          decoration: BoxDecoration(
+                            color: selected
+                                ? context.panel
+                                : Colors.transparent,
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(
+                              color: selected ? context.accent : context.border,
+                            ),
+                          ),
+                          child: InkWell(
+                            onTap: () => app.select(tab.key.id),
+                            onSecondaryTapUp: (details) => showSessionActions(
+                              context,
+                              app,
+                              tab,
+                              details.globalPosition,
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    statusIcon(tab),
+                                    size: 13,
+                                    color: statusInk(context, tab),
+                                  ),
+                                  const SizedBox(width: 7),
+                                  Expanded(
+                                    child: Text(
+                                      tab.title,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: selected
+                                            ? FontWeight.w600
+                                            : FontWeight.normal,
+                                      ),
+                                    ),
+                                  ),
+                                  if (app.isFavourite(tab.key.id))
+                                    const Padding(
+                                      padding: EdgeInsets.only(left: 5),
+                                      child: Icon(
+                                        Icons.star_rounded,
+                                        color: Color(0xffb88123),
+                                        size: 12,
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
                           ),
                         ),
-                        child: InkWell(
-                          onTap: () => app.select(tab.key.id),
-                          onSecondaryTapUp: (details) => showSessionActions(
-                            context,
-                            app,
-                            tab,
-                            details.globalPosition,
-                          ),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 10),
-                            child: Row(
-                              children: [
-                                Icon(
-                                  statusIcon(tab),
-                                  size: 13,
-                                  color: statusInk(context, tab),
-                                ),
-                                const SizedBox(width: 7),
-                                Expanded(
+                      );
+                    },
+                  ),
+                ),
+              Container(
+                key: const ValueKey('session-header'),
+                constraints: const BoxConstraints(minHeight: 48),
+                padding: EdgeInsets.symmetric(
+                  horizontal: compact ? 8 : 18,
+                  vertical: 2,
+                ),
+                color: context.panel,
+                child: Row(
+                  children: [
+                    if (!widget.embedded)
+                      CompactIcon(
+                        Icons.arrow_back,
+                        'Session overview',
+                        app.overview,
+                        key: const ValueKey('show-overview'),
+                      ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Tooltip(
+                                  message: [
+                                    'Computer: $computer',
+                                    'Workspace: $workspace',
+                                    if (session.terminalTitle.isNotEmpty &&
+                                        session.terminalTitle != session.title)
+                                      session.terminalTitle,
+                                  ].join('\n'),
                                   child: Text(
-                                    tab.title,
+                                    session.title,
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: selected
-                                          ? FontWeight.w600
-                                          : FontWeight.normal,
+                                    style: const TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
                                     ),
                                   ),
                                 ),
-                                if (app.isFavourite(tab.key.id))
-                                  const Padding(
-                                    padding: EdgeInsets.only(left: 5),
-                                    child: Icon(
-                                      Icons.star_rounded,
-                                      color: Color(0xffb88123),
-                                      size: 12,
+                              ),
+                              if (!compact) StatusBadge(session),
+                              if (!compact) const SizedBox(width: 12),
+                              CompactIcon(
+                                app.isFavourite(session.key.id)
+                                    ? Icons.star_rounded
+                                    : Icons.star_outline_rounded,
+                                app.isFavourite(session.key.id)
+                                    ? 'Remove from favourites'
+                                    : 'Add to favourites',
+                                () => app.toggleFavourite(session),
+                                color: app.isFavourite(session.key.id)
+                                    ? const Color(0xffb88123)
+                                    : context.mutedInk,
+                              ),
+                              if (app.supportsProjectFiles)
+                                CompactIcon(
+                                  Icons.folder_open_outlined,
+                                  filesVisible
+                                      ? 'Hide project files'
+                                      : 'Show project files',
+                                  toggleFiles,
+                                  color: filesVisible
+                                      ? context.accent
+                                      : context.mutedInk,
+                                ),
+                              if (session.agent.toLowerCase() == 'claude')
+                                CompactIcon(
+                                  chatOpen
+                                      ? Icons.terminal
+                                      : Icons.forum_outlined,
+                                  chatOpen
+                                      ? 'Terminal view'
+                                      : 'Chat view (experimental)',
+                                  () {
+                                    draftFocus.unfocus();
+                                    terminalSurfaceKey.currentState?.focus
+                                        .unfocus();
+                                    setState(() {
+                                      chatOpen = !chatOpen;
+                                      composerOpen = false;
+                                    });
+                                  },
+                                  color: chatOpen
+                                      ? context.accent
+                                      : context.mutedInk,
+                                ),
+                              if (!compact && !chatOpen) ...[
+                                CompactIcon(
+                                  Icons.text_decrease,
+                                  'Smaller text',
+                                  () => app.setZoom(app.layout.zoom / 1.15),
+                                ),
+                                CompactIcon(
+                                  Icons.fit_screen,
+                                  'Reset text size and fit the terminal',
+                                  () => app.setZoom(1),
+                                ),
+                                CompactIcon(
+                                  Icons.text_increase,
+                                  'Larger text',
+                                  () => app.setZoom(app.layout.zoom * 1.15),
+                                ),
+                                CompactIcon(
+                                  Icons.content_copy,
+                                  'Copy selection or visible screen',
+                                  () => unawaited(copyTerminal()),
+                                ),
+                                CompactIcon(
+                                  Icons.refresh,
+                                  'Reconnect terminal and refresh its dimensions',
+                                  () => unawaited(
+                                    app.reconnectTerminal(session.key.id),
+                                  ),
+                                ),
+                              ],
+                              if (!chatOpen &&
+                                  (!widget.mobileControls || composerOpen))
+                                CompactIcon(
+                                  Icons.mic_none,
+                                  defaultTargetPlatform ==
+                                              TargetPlatform.macOS &&
+                                          app.snapshot.dictationShortcut.enabled
+                                      ? 'Dictate message (${app.snapshot.dictationShortcut.label})'
+                                      : 'Dictate message',
+                                  () => unawaited(dictate()),
+                                ),
+                              if (compact)
+                                CompactIcon(
+                                  Icons.chat_bubble_outline,
+                                  composerOpen
+                                      ? 'Hide message box'
+                                      : 'Show message box',
+                                  toggleComposer,
+                                  key: const ValueKey('toggle-composer'),
+                                  color: composerOpen
+                                      ? context.accent
+                                      : context.mutedInk,
+                                )
+                              else
+                                Tooltip(
+                                  message: composerOpen
+                                      ? 'Hide message box'
+                                      : 'Show message box',
+                                  child: TextButton.icon(
+                                    key: const ValueKey('toggle-composer'),
+                                    style: TextButton.styleFrom(
+                                      minimumSize: const Size(0, 32),
+                                      tapTargetSize:
+                                          MaterialTapTargetSize.shrinkWrap,
+                                    ),
+                                    onPressed: toggleComposer,
+                                    icon: Icon(
+                                      composerOpen
+                                          ? Icons.close
+                                          : Icons.chat_bubble_outline,
+                                      size: 16,
+                                    ),
+                                    label: const Text('Message'),
+                                  ),
+                                ),
+                              SizedBox(
+                                width: 32,
+                                height: 32,
+                                child: PopupMenuButton<String>(
+                                  tooltip: 'Terminal controls',
+                                  icon: const Icon(Icons.more_horiz, size: 20),
+                                  onSelected: (value) {
+                                    switch (value) {
+                                      case 'rename':
+                                        unawaited(
+                                          showRenameSession(
+                                            context,
+                                            app,
+                                            session,
+                                          ),
+                                        );
+                                      case 'info':
+                                        unawaited(showSessionInfo());
+                                      case 'copy':
+                                        unawaited(copyTerminal());
+                                      case 'fit':
+                                        app.setZoom(1);
+                                      case 'larger':
+                                        app.setZoom(app.layout.zoom * 1.2);
+                                      case 'smaller':
+                                        app.setZoom(app.layout.zoom / 1.2);
+                                      case 'reconnect':
+                                        unawaited(
+                                          app.reconnectTerminal(session.key.id),
+                                        );
+                                      case 'composer':
+                                        toggleComposer();
+                                      case 'window':
+                                        unawaited(
+                                          widget.openWindow!(
+                                            'session',
+                                            session.key.id,
+                                          ),
+                                        );
+                                      default:
+                                        if (value.startsWith('group:')) {
+                                          app.moveToGroup(
+                                            session.key.id,
+                                            value.substring(6),
+                                          );
+                                        }
+                                    }
+                                  },
+                                  itemBuilder: (_) => [
+                                    PopupMenuItem(
+                                      value: 'rename',
+                                      enabled: app.canManageSession(session),
+                                      child: const Text('Rename'),
+                                    ),
+                                    const PopupMenuItem(
+                                      value: 'info',
+                                      child: Text('Session details'),
+                                    ),
+                                    const PopupMenuItem(
+                                      value: 'copy',
+                                      child: Text('Copy terminal'),
+                                    ),
+                                    if (compact) ...[
+                                      const PopupMenuItem(
+                                        value: 'fit',
+                                        child: Text('Fit screen'),
+                                      ),
+                                      const PopupMenuItem(
+                                        value: 'larger',
+                                        child: Text('Larger text'),
+                                      ),
+                                      const PopupMenuItem(
+                                        value: 'smaller',
+                                        child: Text('Smaller text'),
+                                      ),
+                                      const PopupMenuItem(
+                                        value: 'reconnect',
+                                        child: Text('Reconnect terminal'),
+                                      ),
+                                    ],
+                                    PopupMenuItem(
+                                      value: 'composer',
+                                      child: Text(
+                                        composerOpen
+                                            ? 'Hide message composer'
+                                            : 'Show message composer',
+                                      ),
+                                    ),
+                                    if (widget.openWindow != null)
+                                      const PopupMenuItem(
+                                        value: 'window',
+                                        child: Text('Open in a window'),
+                                      ),
+                                    ...app.layout.groups.map(
+                                      (g) => PopupMenuItem(
+                                        value: 'group:${g.id}',
+                                        child: Text('Add to ${g.name}'),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Tooltip(
+                                  message:
+                                      'Computer: $computer\nWorkspace: $workspace',
+                                  child: Text(
+                                    location,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: context.mutedInk,
+                                      fontSize: 10,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              if (!session.git.isEmpty) ...[
+                                const SizedBox(width: 8),
+                                Flexible(
+                                  child: Align(
+                                    alignment: Alignment.centerRight,
+                                    child: GitMetadataView(
+                                      metadata: session.git,
+                                      compact: true,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: Container(
+                  color: chatOpen ? context.workspace : terminalBackground,
+                  child: chatOpen
+                      ? ConversationView(
+                          key: ValueKey('chat-${session.key.id}'),
+                          app: app,
+                          session: session,
+                          active:
+                              widget.active && widget.visible && !filesCovered,
+                          onTerminal: () => setState(() => chatOpen = false),
+                        )
+                      : terminal == null
+                      ? Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(24),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  session.available
+                                      ? Icons.terminal
+                                      : Icons.cloud_off_outlined,
+                                  color: const Color(0xff7d95aa),
+                                  size: 32,
+                                ),
+                                const SizedBox(height: 14),
+                                Text(
+                                  session.available
+                                      ? entry?.message ?? 'Connecting terminal…'
+                                      : 'This session is unavailable. Your saved view and draft are preserved.',
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(
+                                    color: Color(0xffaabcca),
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                if (session.available)
+                                  TextButton(
+                                    onPressed: () => unawaited(
+                                      app.canTakeTerminalControl(session.key.id)
+                                          ? takeControl()
+                                          : app.reconnectTerminal(
+                                              session.key.id,
+                                            ),
+                                    ),
+                                    child: Text(
+                                      app.canTakeTerminalControl(session.key.id)
+                                          ? 'Take control'
+                                          : 'Reconnect',
                                     ),
                                   ),
                               ],
                             ),
                           ),
+                        )
+                      : TerminalDropTarget(
+                          app: app,
+                          sessionId: session.key.id,
+                          enabled: widget.visible,
+                          onActivate: widget.embedded
+                              ? () => app.select(session.key.id)
+                              : null,
+                          child: TerminalSurface(
+                            key: terminalSurfaceKey,
+                            autofocus:
+                                widget.active &&
+                                !composerOpen &&
+                                !dictationOpen &&
+                                !filesVisible,
+                            onDictate: () => unawaited(dictate()),
+                            imageAttachment: MobileImageAttachment(
+                              app: app,
+                              sessionId: session.key.id,
+                              onFinished: () {
+                                if (mounted &&
+                                    widget.active &&
+                                    widget.visible &&
+                                    !composerOpen &&
+                                    app.canSendTerminalInput(session.key.id) &&
+                                    ModalRoute.of(context)?.isCurrent == true) {
+                                  terminalSurfaceKey.currentState?.focus
+                                      .requestFocus();
+                                }
+                              },
+                            ),
+                            showMobileControls:
+                                !filesCovered &&
+                                widget.mobileControls &&
+                                widget.active &&
+                                !composerOpen,
+                            mobileStatus: MobileTerminalStatusMenu(
+                              summary: statusSummary,
+                              details: [
+                                app.connectionMessage,
+                                if (app.store.warning != null)
+                                  app.store.warning!,
+                                entry!.message,
+                                if (!app.canSendTerminalInput(session.key.id))
+                                  'Terminal input unavailable',
+                                '${entry.screen.columns} × ${entry.screen.rows}',
+                                '${app.terminals.values.where((t) => t.subscription != null).length}/16 live',
+                              ],
+                              warning:
+                                  state?.message != null ||
+                                  app.store.warning != null ||
+                                  entry.state != TerminalState.live ||
+                                  !connectionReady,
+                              reconnectLabel:
+                                  app.canTakeTerminalControl(session.key.id)
+                                  ? 'Take control'
+                                  : 'Reconnect terminal',
+                              onReconnect: () => unawaited(
+                                app.canTakeTerminalControl(session.key.id)
+                                    ? takeControl()
+                                    : connectionReady
+                                    ? app.reconnectTerminal(session.key.id)
+                                    : app.reconnect(),
+                              ),
+                            ),
+                            terminal: terminal,
+                            controller: terminalController,
+                            zoom: app.layout.zoom,
+                            copy: copyTerminal,
+                            inputId: session.key.id,
+                            onViewport:
+                                widget.visible &&
+                                    app.canResizeViewport(session.key.id)
+                                ? (cols, rows) => app.updateViewport(
+                                    session.key.id,
+                                    cols,
+                                    rows,
+                                  )
+                                : null,
+                            forwardMouseClicks:
+                                app.canScrollTerminal(session.key.id) &&
+                                app.canSendTerminalInput(session.key.id),
+                            onScroll: app.canScrollTerminal(session.key.id)
+                                ? (lines) =>
+                                      app.scrollTerminal(session.key.id, lines)
+                                : null,
+                            sendDraft: () =>
+                                unawaited(app.sendDraft(session.key.id)),
+                            active:
+                                widget.active &&
+                                widget.visible &&
+                                !filesCovered,
+                            sendInput:
+                                !filesCovered &&
+                                    widget.active &&
+                                    widget.visible &&
+                                    app.canSendTerminalInput(session.key.id)
+                                ? (input) => app.sendTerminalInput(
+                                    session.key.id,
+                                    input,
+                                  )
+                                : null,
+                          ),
                         ),
-                      ),
-                    );
-                  },
                 ),
               ),
-            Container(
-              key: const ValueKey('session-header'),
-              constraints: const BoxConstraints(minHeight: 48),
-              padding: EdgeInsets.symmetric(
-                horizontal: compact ? 8 : 18,
-                vertical: 2,
-              ),
-              color: context.panel,
-              child: Row(
-                children: [
-                  if (!widget.embedded)
-                    CompactIcon(
-                      Icons.arrow_back,
-                      'Session overview',
-                      app.overview,
-                      key: const ValueKey('show-overview'),
-                    ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Tooltip(
-                                message: [
-                                  'Computer: $computer',
-                                  'Workspace: $workspace',
-                                  if (session.terminalTitle.isNotEmpty &&
-                                      session.terminalTitle != session.title)
-                                    session.terminalTitle,
-                                ].join('\n'),
-                                child: Text(
-                                  session.title,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            if (!compact) StatusBadge(session),
-                            if (!compact) const SizedBox(width: 12),
-                            CompactIcon(
-                              app.isFavourite(session.key.id)
-                                  ? Icons.star_rounded
-                                  : Icons.star_outline_rounded,
-                              app.isFavourite(session.key.id)
-                                  ? 'Remove from favourites'
-                                  : 'Add to favourites',
-                              () => app.toggleFavourite(session),
-                              color: app.isFavourite(session.key.id)
-                                  ? const Color(0xffb88123)
-                                  : context.mutedInk,
-                            ),
-                            if (session.agent.toLowerCase() == 'claude')
-                              CompactIcon(
-                                chatOpen
-                                    ? Icons.terminal
-                                    : Icons.forum_outlined,
-                                chatOpen
-                                    ? 'Terminal view'
-                                    : 'Chat view (experimental)',
-                                () {
-                                  draftFocus.unfocus();
-                                  terminalSurfaceKey.currentState?.focus
-                                      .unfocus();
-                                  setState(() {
-                                    chatOpen = !chatOpen;
-                                    composerOpen = false;
-                                  });
-                                },
-                                color: chatOpen
-                                    ? context.accent
-                                    : context.mutedInk,
-                              ),
-                            if (!compact && !chatOpen) ...[
-                              CompactIcon(
-                                Icons.text_decrease,
-                                'Smaller text',
-                                () => app.setZoom(app.layout.zoom / 1.15),
-                              ),
-                              CompactIcon(
-                                Icons.fit_screen,
-                                'Reset text size and fit the terminal',
-                                () => app.setZoom(1),
-                              ),
-                              CompactIcon(
-                                Icons.text_increase,
-                                'Larger text',
-                                () => app.setZoom(app.layout.zoom * 1.15),
-                              ),
-                              CompactIcon(
-                                Icons.content_copy,
-                                'Copy selection or visible screen',
-                                () => unawaited(copyTerminal()),
-                              ),
-                              CompactIcon(
-                                Icons.refresh,
-                                'Reconnect terminal and refresh its dimensions',
-                                () => unawaited(
-                                  app.reconnectTerminal(session.key.id),
-                                ),
-                              ),
-                            ],
-                            if (!chatOpen &&
-                                (!widget.mobileControls || composerOpen))
-                              CompactIcon(
-                                Icons.mic_none,
-                                defaultTargetPlatform == TargetPlatform.macOS &&
-                                        app.snapshot.dictationShortcut.enabled
-                                    ? 'Dictate message (${app.snapshot.dictationShortcut.label})'
-                                    : 'Dictate message',
-                                () => unawaited(dictate()),
-                              ),
-                            if (compact)
-                              CompactIcon(
-                                Icons.chat_bubble_outline,
-                                composerOpen
-                                    ? 'Hide message box'
-                                    : 'Show message box',
-                                toggleComposer,
-                                key: const ValueKey('toggle-composer'),
-                                color: composerOpen
-                                    ? context.accent
-                                    : context.mutedInk,
-                              )
-                            else
-                              Tooltip(
-                                message: composerOpen
-                                    ? 'Hide message box'
-                                    : 'Show message box',
-                                child: TextButton.icon(
-                                  key: const ValueKey('toggle-composer'),
-                                  style: TextButton.styleFrom(
-                                    minimumSize: const Size(0, 32),
-                                    tapTargetSize:
-                                        MaterialTapTargetSize.shrinkWrap,
-                                  ),
-                                  onPressed: toggleComposer,
-                                  icon: Icon(
-                                    composerOpen
-                                        ? Icons.close
-                                        : Icons.chat_bubble_outline,
-                                    size: 16,
-                                  ),
-                                  label: const Text('Message'),
-                                ),
-                              ),
-                            SizedBox(
-                              width: 32,
-                              height: 32,
-                              child: PopupMenuButton<String>(
-                                tooltip: 'Terminal controls',
-                                icon: const Icon(Icons.more_horiz, size: 20),
-                                onSelected: (value) {
-                                  switch (value) {
-                                    case 'rename':
-                                      unawaited(
-                                        showRenameSession(
-                                          context,
-                                          app,
-                                          session,
-                                        ),
-                                      );
-                                    case 'info':
-                                      unawaited(showSessionInfo());
-                                    case 'copy':
-                                      unawaited(copyTerminal());
-                                    case 'fit':
-                                      app.setZoom(1);
-                                    case 'larger':
-                                      app.setZoom(app.layout.zoom * 1.2);
-                                    case 'smaller':
-                                      app.setZoom(app.layout.zoom / 1.2);
-                                    case 'reconnect':
-                                      unawaited(
-                                        app.reconnectTerminal(session.key.id),
-                                      );
-                                    case 'composer':
-                                      toggleComposer();
-                                    case 'window':
-                                      unawaited(
-                                        widget.openWindow!(
-                                          'session',
-                                          session.key.id,
-                                        ),
-                                      );
-                                    default:
-                                      if (value.startsWith('group:')) {
-                                        app.moveToGroup(
-                                          session.key.id,
-                                          value.substring(6),
-                                        );
-                                      }
-                                  }
-                                },
-                                itemBuilder: (_) => [
-                                  PopupMenuItem(
-                                    value: 'rename',
-                                    enabled: app.canManageSession(session),
-                                    child: const Text('Rename'),
-                                  ),
-                                  const PopupMenuItem(
-                                    value: 'info',
-                                    child: Text('Session details'),
-                                  ),
-                                  const PopupMenuItem(
-                                    value: 'copy',
-                                    child: Text('Copy terminal'),
-                                  ),
-                                  if (compact) ...[
-                                    const PopupMenuItem(
-                                      value: 'fit',
-                                      child: Text('Fit screen'),
-                                    ),
-                                    const PopupMenuItem(
-                                      value: 'larger',
-                                      child: Text('Larger text'),
-                                    ),
-                                    const PopupMenuItem(
-                                      value: 'smaller',
-                                      child: Text('Smaller text'),
-                                    ),
-                                    const PopupMenuItem(
-                                      value: 'reconnect',
-                                      child: Text('Reconnect terminal'),
-                                    ),
-                                  ],
-                                  PopupMenuItem(
-                                    value: 'composer',
-                                    child: Text(
-                                      composerOpen
-                                          ? 'Hide message composer'
-                                          : 'Show message composer',
-                                    ),
-                                  ),
-                                  if (widget.openWindow != null)
-                                    const PopupMenuItem(
-                                      value: 'window',
-                                      child: Text('Open in a window'),
-                                    ),
-                                  ...app.layout.groups.map(
-                                    (g) => PopupMenuItem(
-                                      value: 'group:${g.id}',
-                                      child: Text('Add to ${g.name}'),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Tooltip(
-                                message:
-                                    'Computer: $computer\nWorkspace: $workspace',
-                                child: Text(
-                                  location,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    color: context.mutedInk,
-                                    fontSize: 10,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            if (!session.git.isEmpty) ...[
-                              const SizedBox(width: 8),
-                              Flexible(
-                                child: Align(
-                                  alignment: Alignment.centerRight,
-                                  child: GitMetadataView(
-                                    metadata: session.git,
-                                    compact: true,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: Container(
-                color: chatOpen ? context.workspace : terminalBackground,
-                child: chatOpen
-                    ? ConversationView(
-                        key: ValueKey('chat-${session.key.id}'),
-                        app: app,
-                        session: session,
-                        active: widget.active && widget.visible,
-                        onTerminal: () => setState(() => chatOpen = false),
-                      )
-                    : terminal == null
-                    ? Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(24),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                session.available
-                                    ? Icons.terminal
-                                    : Icons.cloud_off_outlined,
-                                color: const Color(0xff7d95aa),
-                                size: 32,
-                              ),
-                              const SizedBox(height: 14),
-                              Text(
-                                session.available
-                                    ? entry?.message ?? 'Connecting terminal…'
-                                    : 'This session is unavailable. Your saved view and draft are preserved.',
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(
-                                  color: Color(0xffaabcca),
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-                              if (session.available)
-                                TextButton(
-                                  onPressed: () => unawaited(
-                                    app.canTakeTerminalControl(session.key.id)
-                                        ? takeControl()
-                                        : app.reconnectTerminal(session.key.id),
-                                  ),
-                                  child: Text(
-                                    app.canTakeTerminalControl(session.key.id)
-                                        ? 'Take control'
-                                        : 'Reconnect',
-                                  ),
-                                ),
-                            ],
+              if (!chatOpen &&
+                  (!widget.mobileControls || composerOpen) &&
+                  (!widget.mobileControls || state?.uncertain != true) &&
+                  entry != null &&
+                  (!short || state?.uncertain != true))
+                Container(
+                  height: 25,
+                  color: const Color(0xff17232e),
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Row(
+                    children: [
+                      Icon(
+                        entry.state == TerminalState.live
+                            ? Icons.circle
+                            : Icons.warning_amber_rounded,
+                        size: entry.state == TerminalState.live ? 6 : 12,
+                        color: entry.state == TerminalState.live
+                            ? const Color(0xff7ab894)
+                            : const Color(0xffd5ae62),
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          (widget.mobileControls ? statusSummary : null) ??
+                              (state?.uncertain != true
+                                  ? state?.message
+                                  : null) ??
+                              (entry.state == TerminalState.live &&
+                                      app.canSendTerminalInput(session.key.id)
+                                  ? 'Click terminal to type · arrows and control keys are supported'
+                                  : entry.message),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Color(0xff92a7b8),
+                            fontSize: 10,
                           ),
-                        ),
-                      )
-                    : TerminalDropTarget(
-                        app: app,
-                        sessionId: session.key.id,
-                        enabled: widget.visible,
-                        onActivate: widget.embedded
-                            ? () => app.select(session.key.id)
-                            : null,
-                        child: TerminalSurface(
-                          key: terminalSurfaceKey,
-                          autofocus:
-                              widget.active && !composerOpen && !dictationOpen,
-                          onDictate: () => unawaited(dictate()),
-                          imageAttachment: MobileImageAttachment(
-                            app: app,
-                            sessionId: session.key.id,
-                            onFinished: () {
-                              if (mounted &&
-                                  widget.active &&
-                                  widget.visible &&
-                                  !composerOpen &&
-                                  app.canSendTerminalInput(session.key.id) &&
-                                  ModalRoute.of(context)?.isCurrent == true) {
-                                terminalSurfaceKey.currentState?.focus
-                                    .requestFocus();
-                              }
-                            },
-                          ),
-                          showMobileControls:
-                              widget.mobileControls &&
-                              widget.active &&
-                              !composerOpen,
-                          mobileStatus: MobileTerminalStatusMenu(
-                            summary: statusSummary,
-                            details: [
-                              app.connectionMessage,
-                              if (app.store.warning != null) app.store.warning!,
-                              entry!.message,
-                              if (!app.canSendTerminalInput(session.key.id))
-                                'Terminal input unavailable',
-                              '${entry.screen.columns} × ${entry.screen.rows}',
-                              '${app.terminals.values.where((t) => t.subscription != null).length}/16 live',
-                            ],
-                            warning:
-                                state?.message != null ||
-                                app.store.warning != null ||
-                                entry.state != TerminalState.live ||
-                                !connectionReady,
-                            reconnectLabel:
-                                app.canTakeTerminalControl(session.key.id)
-                                ? 'Take control'
-                                : 'Reconnect terminal',
-                            onReconnect: () => unawaited(
-                              app.canTakeTerminalControl(session.key.id)
-                                  ? takeControl()
-                                  : connectionReady
-                                  ? app.reconnectTerminal(session.key.id)
-                                  : app.reconnect(),
-                            ),
-                          ),
-                          terminal: terminal,
-                          controller: terminalController,
-                          zoom: app.layout.zoom,
-                          copy: copyTerminal,
-                          inputId: session.key.id,
-                          onViewport:
-                              widget.visible &&
-                                  app.canResizeViewport(session.key.id)
-                              ? (cols, rows) => app.updateViewport(
-                                  session.key.id,
-                                  cols,
-                                  rows,
-                                )
-                              : null,
-                          forwardMouseClicks:
-                              app.canScrollTerminal(session.key.id) &&
-                              app.canSendTerminalInput(session.key.id),
-                          onScroll: app.canScrollTerminal(session.key.id)
-                              ? (lines) =>
-                                    app.scrollTerminal(session.key.id, lines)
-                              : null,
-                          sendDraft: () =>
-                              unawaited(app.sendDraft(session.key.id)),
-                          active: widget.active && widget.visible,
-                          sendInput:
-                              widget.active &&
-                                  widget.visible &&
-                                  app.canSendTerminalInput(session.key.id)
-                              ? (input) =>
-                                    app.sendTerminalInput(session.key.id, input)
-                              : null,
                         ),
                       ),
-              ),
-            ),
-            if (!chatOpen &&
-                (!widget.mobileControls || composerOpen) &&
-                (!widget.mobileControls || state?.uncertain != true) &&
-                entry != null &&
-                (!short || state?.uncertain != true))
-              Container(
-                height: 25,
-                color: const Color(0xff17232e),
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                child: Row(
-                  children: [
-                    Icon(
-                      entry.state == TerminalState.live
-                          ? Icons.circle
-                          : Icons.warning_amber_rounded,
-                      size: entry.state == TerminalState.live ? 6 : 12,
-                      color: entry.state == TerminalState.live
-                          ? const Color(0xff7ab894)
-                          : const Color(0xffd5ae62),
-                    ),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        (widget.mobileControls ? statusSummary : null) ??
-                            (state?.uncertain != true
-                                ? state?.message
-                                : null) ??
-                            (entry.state == TerminalState.live &&
-                                    app.canSendTerminalInput(session.key.id)
-                                ? 'Click terminal to type · arrows and control keys are supported'
-                                : entry.message),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                      Text(
+                        '${entry.screen.columns} × ${entry.screen.rows}',
                         style: const TextStyle(
                           color: Color(0xff92a7b8),
                           fontSize: 10,
                         ),
                       ),
-                    ),
-                    Text(
-                      '${entry.screen.columns} × ${entry.screen.rows}',
-                      style: const TextStyle(
-                        color: Color(0xff92a7b8),
-                        fontSize: 10,
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-            if (!chatOpen &&
-                !widget.mobileControls &&
-                terminal != null &&
-                app.canTakeTerminalControl(session.key.id))
-              Padding(
-                padding: const EdgeInsets.all(8),
-                child: Row(
-                  children: [
-                    const Flexible(
-                      child: Text(
-                        'Another client is attached to this terminal.',
-                      ),
-                    ),
-                    TextButton(
-                      onPressed: takeControl,
-                      child: const Text('Take control'),
-                    ),
-                  ],
-                ),
-              ),
-            if (!composerOpen &&
-                state?.message != null &&
-                state?.uncertain == true)
-              Container(
-                color: context.panel,
-                padding: const EdgeInsets.all(8),
-                child: _InputNotice(
-                  app: app,
-                  id: session.key.id,
-                  state: state!,
-                  short: short,
-                  onResume: resumeInput,
-                ),
-              ),
-            if (composerOpen && !chatOpen)
-              Container(
-                color: context.panel,
-                padding: EdgeInsets.fromLTRB(
-                  compact ? 10 : 18,
-                  short ? 5 : 10,
-                  compact ? 10 : 18,
-                  short ? 5 : 10,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (state?.message != null && state?.uncertain == true)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 7),
-                        child: _InputNotice(
-                          app: app,
-                          id: session.key.id,
-                          state: state!,
-                          short: short,
-                          onResume: resumeInput,
+              if (!chatOpen &&
+                  !widget.mobileControls &&
+                  terminal != null &&
+                  app.canTakeTerminalControl(session.key.id))
+                Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: Row(
+                    children: [
+                      const Flexible(
+                        child: Text(
+                          'Another client is attached to this terminal.',
                         ),
                       ),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            key: const ValueKey('draft-input'),
-                            controller: draft,
-                            focusNode: draftFocus,
-                            enabled: session.available,
-                            minLines: 1,
-                            maxLines: short
-                                ? 1
-                                : compact
-                                ? 3
-                                : 4,
-                            keyboardType: TextInputType.multiline,
-                            textCapitalization: TextCapitalization.sentences,
-                            onChanged: (text) =>
-                                app.updateDraft(session.key.id, text),
-                            decoration: InputDecoration(
-                              hintText: session.inputEnabled
-                                  ? 'Message ${session.agent}…'
-                                  : 'Input disabled for this connection',
-                              helperText: compact ? null : 'Send submits text + Enter. ⌘ Enter also sends.',
-                              helperStyle: const TextStyle(fontSize: 10),
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 10,
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
+                      TextButton(
+                        onPressed: takeControl,
+                        child: const Text('Take control'),
+                      ),
+                    ],
+                  ),
+                ),
+              if (!composerOpen &&
+                  state?.message != null &&
+                  state?.uncertain == true)
+                Container(
+                  color: context.panel,
+                  padding: const EdgeInsets.all(8),
+                  child: _InputNotice(
+                    app: app,
+                    id: session.key.id,
+                    state: state!,
+                    short: short,
+                    onResume: resumeInput,
+                  ),
+                ),
+              if (composerOpen && !chatOpen)
+                Container(
+                  color: context.panel,
+                  padding: EdgeInsets.fromLTRB(
+                    compact ? 10 : 18,
+                    short ? 5 : 10,
+                    compact ? 10 : 18,
+                    short ? 5 : 10,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (state?.message != null && state?.uncertain == true)
                         Padding(
-                          padding: EdgeInsets.only(bottom: compact ? 0 : 22),
-                          child: FilledButton.icon(
-                            key: const ValueKey('send-draft'),
-                            onPressed: canSend
-                                ? () => unawaited(app.sendDraft(session.key.id))
-                                : null,
-                            icon: state?.sending == true
-                                ? const SizedBox(
-                                    width: 13,
-                                    height: 13,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                    ),
-                                  )
-                                : const Icon(Icons.arrow_upward, size: 16),
-                            label: const Text('Send'),
-                            style: FilledButton.styleFrom(
-                              backgroundColor: Theme.of(context)
-                                  .colorScheme
-                                  .primary,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 15,
-                                vertical: 14,
+                          padding: const EdgeInsets.only(bottom: 7),
+                          child: _InputNotice(
+                            app: app,
+                            id: session.key.id,
+                            state: state!,
+                            short: short,
+                            onResume: resumeInput,
+                          ),
+                        ),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              key: const ValueKey('draft-input'),
+                              controller: draft,
+                              focusNode: draftFocus,
+                              enabled: session.available,
+                              minLines: 1,
+                              maxLines: short
+                                  ? 1
+                                  : compact
+                                  ? 3
+                                  : 4,
+                              keyboardType: TextInputType.multiline,
+                              textCapitalization: TextCapitalization.sentences,
+                              onChanged: (text) =>
+                                  app.updateDraft(session.key.id, text),
+                              decoration: InputDecoration(
+                                hintText: session.inputEnabled
+                                    ? 'Message ${session.agent}…'
+                                    : 'Input disabled for this connection',
+                                helperText: compact ? null : 'Send submits text + Enter. ⌘ Enter also sends.',
+                                helperStyle: const TextStyle(fontSize: 10),
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 10,
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                      ],
-                    ),
-                  ],
+                          const SizedBox(width: 10),
+                          Padding(
+                            padding: EdgeInsets.only(bottom: compact ? 0 : 22),
+                            child: FilledButton.icon(
+                              key: const ValueKey('send-draft'),
+                              onPressed: canSend
+                                  ? () =>
+                                        unawaited(app.sendDraft(session.key.id))
+                                  : null,
+                              icon: state?.sending == true
+                                  ? const SizedBox(
+                                      width: 13,
+                                      height: 13,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : const Icon(Icons.arrow_upward, size: 16),
+                              label: const Text('Send'),
+                              style: FilledButton.styleFrom(
+                                backgroundColor: Theme.of(context)
+                                    .colorScheme
+                                    .primary,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 15,
+                                  vertical: 14,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-          ],
-        );
-      },
+            ],
+          );
+        },
+      ),
     );
   }
 }

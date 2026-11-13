@@ -69,7 +69,19 @@ On Android, build and install the APK, then add an SSH connection. Ordinary pass
 
 macOS shortcuts: ⌘1 Favourites, ⌘0 all sessions, ⌘F search, Esc overview, ⌘R reconnect, ⌘Enter send draft. Ctrl+F and Ctrl+Enter send to the focused terminal; from the message box, Ctrl+Enter sends its draft. ⌘Enter retains the draft shortcut. Escape goes to a focused terminal and returns to the overview outside it. On non-Mac keyboards, Ctrl+Shift+C/V copy and paste.
 
-## Experimental native Claude Chat
+## Session files and Kiro specs
+
+Use the folder icon in an open session to show **Project files**. The panel opens automatically the first time supported documents are found, and remembers an explicit close. Wide windows show it beside the session with a resizable divider; narrow windows show an overlay with **Back to session**.
+
+- **Files** lists Markdown and HTML documents from the session's current folder, project root and bounded `docs/` subtree.
+- **Specs** groups Kiro documents from `.kiro/specs/<feature>/` and `.specs/<feature>/`.
+- Click a document to open a closable tab. Opening it again reuses its tab. The two list tabs stay visible; up to eight documents can be open.
+- Markdown supports selection, code blocks and task progress. Task checkboxes are read-only. Discovered relative document links open a tab; explicit web links open externally. Markdown images are labels in this first version.
+- HTML uses the system WebView for a read-only preview. Scripts, navigation, forms and external resources are disabled; inline CSS and embedded data images/fonts are supported. **Source** shows the original text.
+
+Files are read from the session's actual computer through the existing helper, including saved computers behind an SSH gateway. There is no cloud upload, task execution or file modification. Preview limits are 128 documents and 256 KiB per UTF-8 file; omitted or unreadable content is labelled. A changed folder invalidates old tabs. Visible panels refresh every five seconds and stop refreshing in the background or after being closed. Saved preferences contain tab identifiers and layout only, never document contents.
+
+## Native Claude Chat
 
 On the `codex/native-claude-chat` branch, open a Claude session and use **Chat view (experimental)** in its header. Terminal remains the default and stays one tap away. Chat reads the conversation from the hosting computer, so full responses can be selected and copied even when they are longer than the screen. Use **Copy last response**, the per-message Copy button, and **Load earlier messages**. New messages do not pull you away from what you are reading.
 

@@ -24,8 +24,9 @@ void validateProjectPayload(String op, Map<String, dynamic> value) {
   if (op == 'files.read' &&
       value.length == 2 &&
       _hash(value['scope']) &&
-      _hash(value['file']))
+      _hash(value['file'])) {
     return;
+  }
   throw ArgumentError('Invalid project document request.');
 }
 
@@ -98,8 +99,9 @@ class ProjectManifest {
       throw const FormatException('Invalid project file list.');
     }
     final files = (value['files'] as List).map(ProjectFile.fromJson).toList();
-    if (files.map((f) => f.id).toSet().length != files.length)
+    if (files.map((f) => f.id).toSet().length != files.length) {
       throw const FormatException('Duplicate project document.');
+    }
     return ProjectManifest(
       scope: value['scope'],
       folder: value['folder'],
