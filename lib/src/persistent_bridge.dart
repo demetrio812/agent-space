@@ -1,3 +1,5 @@
+import 'project_files.dart';
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
@@ -221,6 +223,8 @@ class PersistentBridge {
         'catalog',
         'machines',
         'chat.read',
+        'files.list',
+        'files.read',
         'health',
       },
       BridgeLane.input => const {
@@ -246,6 +250,10 @@ class PersistentBridge {
     };
     if (!allowed.contains(op)) {
       throw ArgumentError('Unsupported connection action.');
+    }
+    if (op.startsWith('files.')) {
+      validateProjectPayload(op, payload);
+      validateSessionActionRoute('rename', route);
     }
     if (op.startsWith('chat.')) {
       validateConversationPayload(op, payload);

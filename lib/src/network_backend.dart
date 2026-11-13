@@ -1,3 +1,5 @@
+import 'project_files.dart';
+
 import 'dart:convert';
 
 import 'backend.dart';
@@ -33,7 +35,8 @@ class NetworkHerdrBackend
         NetworkCatalogBackend,
         SessionManagementBackend,
         ImageAttachmentBackend,
-        ConversationBackend {
+        ConversationBackend,
+        ProjectFilesBackend {
   NetworkHerdrBackend(this.profile, PersistentBridge bridge, {this.onClose})
     : _provider = (() async => bridge),
       _legacy = null;
@@ -482,6 +485,41 @@ class NetworkHerdrBackend
     } catch (_) {
       throw const SessionActionUncertain();
     }
+  }
+
+  @override
+  Future<ProjectManifest> listProjectFiles(SessionInfo session) async {
+    final current = _current(session), bridge = _bridge;
+    if (bridge == null || current.origin == null)
+      throw SessionUnavailable('Files require the bundled helper connection.');
+    final result = await bridge.request(
+      BridgeLane.discovery,
+      'files.list',
+      {},
+      route: current.origin!.route(current.key.terminal, current.paneId),
+      timeout: const Duration(seconds: 30),
+    );
+    _current(session);
+    return ProjectManifest.fromJson(result);
+  }
+
+  @override
+  Future<ProjectDocument> readProjectFile(
+    SessionInfo session,
+    String scope,
+    String file,
+  ) async {
+    final current = _current(session), bridge = _bridge;
+    if (bridge == null || current.origin == null) throw SessionUnavailable();
+    final result = await bridge.request(
+      BridgeLane.discovery,
+      'files.read',
+      {'scope': scope, 'file': file},
+      route: current.origin!.route(current.key.terminal, current.paneId),
+      timeout: const Duration(seconds: 30),
+    );
+    _current(session);
+    return ProjectDocument.fromJson(result);
   }
 
   @override

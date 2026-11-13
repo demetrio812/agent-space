@@ -1,3 +1,5 @@
+import 'project_files.dart';
+
 import 'dart:convert';
 import 'dart:io';
 
@@ -92,6 +94,7 @@ class TabGroup {
 }
 
 class WorkspaceLayout {
+  final projectPanels = <String, ProjectPanelLayout>{};
   final favouriteWorkspaces = <String>{};
   final favourites = <String, SessionInfo>{};
   final retained = <String, SessionInfo>{};
@@ -112,6 +115,9 @@ class WorkspaceLayout {
     'favourites': favourites.values.take(256).map((s) => s.toJson()).toList(),
     'retained': retained.values.take(256).map((s) => s.toJson()).toList(),
     'drafts': drafts,
+    'projectPanels': {
+      for (final e in projectPanels.entries.take(128)) e.key: e.value.toJson(),
+    },
     'uncertainDeliveries': uncertainDeliveries
         .take(maxUncertainDeliveries)
         .toList(),
@@ -166,6 +172,12 @@ class WorkspaceLayout {
         if (record != null && e.key == record.origin.computerId) {
           result.uncertainActions[e.key as String] = record;
         }
+      }
+    }
+    if (j['projectPanels'] is Map) {
+      for (final e in (j['projectPanels'] as Map).entries.take(128)) {
+        if (e.key is String && SessionKey.decode(e.key) != null)
+          result.projectPanels[e.key] = ProjectPanelLayout.fromJson(e.value);
       }
     }
     if (j['drafts'] is Map) {

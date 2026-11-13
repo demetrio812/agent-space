@@ -1,3 +1,4 @@
+import 'project_files.dart';
 import 'dictation_shortcut.dart';
 
 import 'dart:async';
@@ -1334,6 +1335,52 @@ class AppController extends ChangeNotifier {
         current?.paneId == target.paneId &&
         current?.origin?.targetHash == target.origin?.targetHash &&
         current?.origin?.generation == target.origin?.generation;
+  }
+
+  bool get supportsProjectFiles => _backend is ProjectFilesBackend;
+  void saveProjectPanel(String id, ProjectPanelLayout value) {
+    if (!layout.projectPanels.containsKey(id) &&
+        layout.projectPanels.length >= 128) {
+      layout.projectPanels.remove(layout.projectPanels.keys.first);
+    }
+    layout.projectPanels[id] = value;
+    _scheduleSave();
+  }
+
+  Future<ProjectManifest> listProjectFiles(SessionInfo target) async {
+    final backend = _backend, generation = _generation;
+    if (backend is! ProjectFilesBackend ||
+        !dictationTargetIsCurrent(target, generation))
+      throw SessionUnavailable();
+    final result = await (backend as ProjectFilesBackend).listProjectFiles(
+      target,
+    );
+    if (!identical(backend, _backend) ||
+        !dictationTargetIsCurrent(target, generation))
+      throw SessionUnavailable();
+    return result;
+  }
+
+  Future<ProjectDocument> readProjectFile(
+    SessionInfo target,
+    String scope,
+    String file,
+  ) async {
+    final backend = _backend, generation = _generation;
+    if (backend is! ProjectFilesBackend ||
+        !dictationTargetIsCurrent(target, generation))
+      throw SessionUnavailable();
+    final result = await (backend as ProjectFilesBackend).readProjectFile(
+      target,
+      scope,
+      file,
+    );
+    if (!identical(backend, _backend) ||
+        !dictationTargetIsCurrent(target, generation) ||
+        result.scope != scope ||
+        result.file != file)
+      throw SessionUnavailable();
+    return result;
   }
 
   Future<ConversationPage> readConversation(

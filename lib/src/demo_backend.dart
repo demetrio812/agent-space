@@ -1,3 +1,4 @@
+import 'project_files.dart';
 import 'git_metadata.dart';
 import 'conversation.dart';
 
@@ -16,7 +17,62 @@ class DemoBackend
         TerminalInputBackend,
         TerminalViewportBackend,
         SessionManagementBackend,
-        ConversationBackend {
+        ConversationBackend,
+        ProjectFilesBackend {
+  String _fileId(int value) => value.toRadixString(16).padLeft(64, '0');
+  @override
+  Future<ProjectManifest> listProjectFiles(SessionInfo session) async =>
+      ProjectManifest.fromJson({
+        'scope': _fileId(10),
+        'folder': 'orbit-api',
+        'limited': false,
+        'files': [
+          for (final entry in [
+            (1, 'README.md', 'files', ''),
+            (2, 'AGENTS.md', 'files', ''),
+            (3, 'preview.html', 'files', ''),
+            (4, 'requirements.md', 'specs', 'team-invitations'),
+            (5, 'design.md', 'specs', 'team-invitations'),
+            (6, 'tasks.md', 'specs', 'team-invitations'),
+          ])
+            {
+              'id': _fileId(entry.$1),
+              'name': entry.$2,
+              'path': entry.$3 == 'specs'
+                  ? '.kiro/specs/${entry.$4}/${entry.$2}'
+                  : entry.$2,
+              'kind': entry.$1 == 3 ? 'html' : 'markdown',
+              'section': entry.$3,
+              'feature': entry.$4,
+              'revision': _fileId(100 + entry.$1),
+            },
+        ],
+      });
+  @override
+  Future<ProjectDocument> readProjectFile(
+    SessionInfo session,
+    String scope,
+    String file,
+  ) async {
+    if (scope != _fileId(10)) throw SessionUnavailable();
+    final index = int.tryParse(file, radix: 16);
+    final text = switch (index) {
+      1 => '# Orbit API\n\nA small API for teams that work together.\n\n## Getting started\n\n```sh\nnpm install\nnpm run dev\n```\n\n## Team invitations\n\nInvite members with secure, expiring links. Read [the instructions](AGENTS.md) before changing the API.',
+      2 => '# Project instructions\n\n- Read the relevant specification.\n- Keep changes focused.\n- Run tests before opening a pull request.',
+      3 => '<html><head><style>body{font-family:system-ui;padding:32px;background:#f2f6f5;color:#24483d}article{padding:24px;background:white;border-radius:14px}h1{font-size:28px}a{display:block;background:#28664e;color:white;padding:12px;border-radius:6px;text-align:center}</style></head><body><h2>◉ Orbit</h2><article><h1>A place on the team.</h1><p>Sam invited you to join the Design team on Orbit.</p><a href="https://example.com">Accept invitation</a><p>This invitation expires in 48 hours.</p></article></body></html>',
+      4 => '# Team invitations\n\n## Requirements\n\nWHEN an administrator invites a member, THE SYSTEM SHALL email a secure link that expires after 48 hours.',
+      5 => '# Technical design\n\n## Invitation flow\n\nAdministrator → Invitation service → Email → New member\n\n## Data model\n\nStore a team identifier, recipient, hashed token and expiration date.',
+      6 => '# Implementation tasks\n\n- [x] 1. Add invitation model\n- [x] 2. Create invite endpoint\n- [x] 3. Add invitation email\n- [ ] 4. Implement acceptance\n- [ ] 5. Handle expired links\n- [ ] 6. Add integration tests',
+      _ => throw SessionUnavailable(),
+    };
+    return ProjectDocument(
+      scope: scope,
+      file: file,
+      revision: _fileId(100 + index!),
+      text: text,
+    );
+  }
+
   @override
   String get sourceId => 'demo';
   final _streams = <String, StreamController<ObserveEvent>>{};

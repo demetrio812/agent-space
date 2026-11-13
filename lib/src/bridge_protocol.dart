@@ -161,6 +161,10 @@ Object bridgeRejection(Map<String, dynamic> error, {required bool input}) {
   const codes = {
     'invalid_request',
     'unsupported',
+    'file_unavailable',
+    'file_too_large',
+    'file_encoding',
+    'file_changed',
     'setup_required',
     'auth_required',
     'host_key',
@@ -181,6 +185,18 @@ Object bridgeRejection(Map<String, dynamic> error, {required bool input}) {
   }
   if (input && error['dispatched'] == true) return DeliveryUncertain();
   return switch (error['code']) {
+    'file_unavailable' => SessionUnavailable(
+      'This document or folder is unavailable. Refresh the file list.',
+    ),
+    'file_too_large' => SessionUnavailable(
+      'This document exceeds the 256 KiB preview limit.',
+    ),
+    'file_encoding' => SessionUnavailable(
+      'This document is not valid UTF-8 text.',
+    ),
+    'file_changed' => SessionUnavailable(
+      'The folder or document changed. Refresh the file list.',
+    ),
     'route_changed' => SessionUnavailable(
       'This computer changed in Herdr. Refresh before typing again.',
     ),
