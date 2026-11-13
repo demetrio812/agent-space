@@ -496,18 +496,38 @@ class NetworkHerdrBackend
     Map<String, dynamic> payload,
   ) async {
     validateBrowserPayload(op, payload);
-    final current = _current(session), bridge = _bridge;
+    final current = op == 'fs.cancel' ? session : _current(session),
+        bridge = _bridge;
     if (bridge == null || current.origin == null) throw SessionUnavailable();
+    final route = current.origin!.route(current.key.terminal, current.paneId);
     final result = await bridge.request(
       {'fs.list', 'fs.read'}.contains(op)
           ? BridgeLane.discovery
           : BridgeLane.transfer,
       op,
       payload,
-      route: current.origin!.route(current.key.terminal, current.paneId),
+      route: route,
       timeout: const Duration(seconds: 30),
     );
-    if (op != 'fs.cancel') _current(session);
+    try {
+      if (op != 'fs.cancel') _current(session);
+    } catch (_) {
+      final token = result['token'];
+      if (op == 'fs.begin' &&
+          token is String &&
+          RegExp(r'^[0-9a-f]{32}$').hasMatch(token)) {
+        try {
+          await bridge.request(
+            BridgeLane.transfer,
+            'fs.cancel',
+            {'token': token},
+            route: route,
+            timeout: const Duration(seconds: 2),
+          );
+        } catch (_) {}
+      }
+      rethrow;
+    }
     return result;
   }
 

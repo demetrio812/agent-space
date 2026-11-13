@@ -1,3 +1,4 @@
+import 'demo_file_browser.dart';
 import 'file_browser.dart';
 import 'project_files.dart';
 import 'git_metadata.dart';
@@ -21,124 +22,13 @@ class DemoBackend
         ConversationBackend,
         ProjectFilesBackend,
         FileBrowserBackend {
-  final _browserPending = <String, Map<String, dynamic>>{};
-  final _browserSaved = <String, Map<String, int>>{};
-  int _browserCounter = 0;
+  late final _browser = DemoFileBrowser(listProjectFiles, readProjectFile);
   @override
   Future<Map<String, dynamic>> fileBrowserRequest(
     SessionInfo session,
     String op,
-    Map<String, dynamic> p,
-  ) async {
-    validateBrowserPayload(op, p);
-    final raw = p['path'],
-        path = raw == ''
-            ? '/home/demo/projects/orbit-api'
-            : raw == '~'
-            ? '/home/demo'
-            : raw;
-    final scope = payloadDigest(Uint8List.fromList(utf8.encode('$path')));
-    if (op == 'fs.list') {
-      final rows = <Map<String, dynamic>>[];
-      void add(String name, String kind, int size, int revision) {
-        rows.add({
-          'name': name,
-          'kind': kind,
-          'size': size,
-          'revision': _fileId(revision),
-        });
-      }
-
-      if (path == '/home/demo/projects/orbit-api') {
-        add('docs', 'directory', 0, 1);
-        add('.kiro', 'directory', 0, 2);
-        for (final file in (await listProjectFiles(
-          session,
-        )).files.where((f) => f.section == 'files')) {
-          add(file.name, 'file', 512, int.parse(file.revision, radix: 16));
-        }
-      } else if (path == '/home/demo/projects/orbit-api/docs') {
-        add('guide.md', 'file', 128, 101);
-      } else if (path == '/') {
-        add('home', 'directory', 0, 1);
-      } else if (path == '/home') {
-        add('demo', 'directory', 0, 1);
-      } else if (path == '/home/demo') {
-        add('projects', 'directory', 0, 1);
-        add('Downloads', 'directory', 0, 2);
-      } else if (path == '/home/demo/projects') {
-        add('orbit-api', 'directory', 0, 1);
-      }
-      for (final e in (_browserSaved[path] ?? <String, int>{}).entries) {
-        add(e.key, 'file', e.value, 1000);
-      }
-      return {
-        'path': path,
-        'home': '/home/demo',
-        'scope': scope,
-        'entries': rows,
-        'limited': false,
-      };
-    }
-    if (op == 'fs.read') {
-      final manifest = await listProjectFiles(session);
-      final file =
-          manifest.files.where((f) => f.name == p['name']).firstOrNull ??
-          manifest.files.first;
-      final document = await readProjectFile(session, manifest.scope, file.id);
-      final id = payloadDigest(
-        Uint8List.fromList(utf8.encode('$path/${p['name']}')),
-      );
-      return {
-        'file': {
-          'id': id,
-          'name': p['name'],
-          'path': p['name'],
-          'kind': file.kind,
-          'section': 'files',
-          'feature': '',
-          'revision': p['revision'],
-        },
-        'document': {
-          'scope': p['scope'],
-          'file': id,
-          'revision': p['revision'],
-          'text': document.text,
-        },
-      };
-    }
-    if (op == 'fs.begin') {
-      if (_browserSaved[path]?.containsKey(p['name']) == true) {
-        throw SessionUnavailable('A file with this name already exists.');
-      }
-      final token = (++_browserCounter).toRadixString(16).padLeft(32, '0');
-      _browserPending[token] = {...p, 'offset': 0};
-      return {'token': token, 'offset': 0};
-    }
-    final token = p['token'];
-    if (op == 'fs.cancel') {
-      _browserPending.remove(token);
-      return {'cancelled': true};
-    }
-    final pending = _browserPending[token];
-    if (pending == null) throw SessionUnavailable();
-    if (op == 'fs.chunk') {
-      pending['offset'] =
-          (pending['offset'] as int) +
-          base64Decode(p['bytes'] as String).length;
-      return {'offset': pending['offset']};
-    }
-    _browserPending.remove(token);
-    (_browserSaved[pending['path']] ??= <String, int>{})[pending['name']
-            as String] =
-        pending['size'] as int;
-    return {
-      'uploaded': true,
-      'path': '${pending['path']}/${pending['name']}',
-      'size': pending['size'],
-      'sha256': pending['sha256'],
-    };
-  }
+    Map<String, dynamic> payload,
+  ) => _browser.request(session, op, payload);
 
   String _fileId(int value) => value.toRadixString(16).padLeft(64, '0');
   @override
@@ -660,6 +550,7 @@ class DemoBackend
 
   @override
   Future<void> close() async {
+    _browser.close();
     _closed = true;
     for (final timer in _timers.values) {
       timer.cancel();

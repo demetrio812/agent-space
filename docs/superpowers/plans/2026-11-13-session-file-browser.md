@@ -27,22 +27,22 @@
 **Files:** Create scripts/bridge/file_browser.py, scripts/bridge/peer_file_transfers.py, scripts/test_file_browser.py; update worker/gateway/protocol/bootstrap, Swift BridgeJob/tests, package artifacts and gateway tests.
 **Interfaces:** FileBrowser(api).operation(op,route,payload) returns list page {path,home,scope,entries,limited}, read {file,document} or upload token/offset/completion; close cleans partials. PeerFileTransfers(gateway) pins transfer leases and maps opaque tokens.
 
-- [ ] Write failing synthetic browse/read/upload/routing tests and observe failures.
-- [ ] Implement bounded directory reader, descriptor-held upload lifecycle and exact routing/validators.
-- [ ] Run host/Swift suites, regenerate artifacts and commit.
+- [x] Write failing synthetic browse/read/upload/routing tests and observe failures.
+- [x] Implement bounded directory reader, descriptor-held upload lifecycle and exact routing/validators.
+- [x] Run host/Swift suites, regenerate artifacts and commit.
 
 ### Task 2: Flutter client and panel
 
 **Files:** Create lib/src/file_browser.dart, lib/src/session_file_browser.dart and tests; update controller/network/Demo/persistent_bridge, ProjectWorkspace/preferences, README.
 **Interfaces:** FileBrowserBackend.fileBrowserRequest(SessionInfo,String,Map) returns typed-validated map. BrowserPage/BrowserEntry strict models; BrowserUpload executes acknowledged sequential chunks with cancellation/progress. SessionFileBrowser(app,session,active) owns memory-only browser state.
 
-- [ ] Write failing model/controller/widget tests for strict payloads, rename, navigation, focus, bounds, stale results and upload cancellation.
-- [ ] Implement client, Demo, browser picker/drop/progress/preview; Documents naming and scrollable tabs.
-- [ ] Run Flutter full suite/analyzer and commit.
+- [x] Write failing model/controller/widget tests for strict payloads, rename, navigation, focus, bounds, stale results and upload cancellation.
+- [x] Implement client, Demo, browser picker/drop/progress/preview; Documents naming and scrollable tabs.
+- [x] Run Flutter full suite/analyzer and commit.
 
 ### Task 3: Review and release
 
-- [ ] One independent final review; resolve important findings with red/green regressions in one pass.
+- [x] One independent final review; resolve important findings with red/green regressions in one pass.
 - [ ] Run final host/Swift/Flutter verification, mirror intentional sources preserving private signing, build/sign release 44.
 - [ ] Install/launch Mac and iPhone, verify versions; native checks only Demo/disposable input.
 - [ ] Commit private mirror, push public feature branch and report exact outcomes and limits.

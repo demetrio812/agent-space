@@ -1,9 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:agentspace/src/file_browser.dart';
+import 'package:agentspace/src/backend_errors.dart';
+import 'package:agentspace/src/session_file_browser.dart';
+import 'package:desktop_drop/desktop_drop.dart';
+import 'package:flutter/services.dart';
 
 final hash = 'a' * 64;
 Map<String, dynamic> browserPage([String path = '/project']) => {
@@ -16,6 +19,20 @@ Map<String, dynamic> browserPage([String path = '/project']) => {
   ],
   'limited': false,
 };
+
+class GrowingBrowserSource extends DropItemFile {
+  GrowingBrowserSource() : super('/growing');
+  @override
+  Future<int> length() async => 1;
+  @override
+  Stream<Uint8List> openRead([int? start, int? end]) async* {
+    final chunk = Uint8List(1024 * 1024);
+    for (var i = 0; i < 33; i++) {
+      yield chunk;
+    }
+  }
+}
+
 void main() {
   test('strict directory results and payloads reject traversal and malformed entries', () {
     expect(BrowserPage.fromJson(browserPage()).entries.length, 2);
@@ -108,6 +125,71 @@ void main() {
       expect(calls, ['fs.begin', 'fs.cancel']);
     },
   );
+  test('acknowledged no-replace rejection is definite', () async {
+    final client = BrowserUpload((op, p) async {
+      if (op == 'fs.begin') return {'token': 'b' * 32, 'offset': 0};
+      if (op == 'fs.finish') {
+        throw FileRequestRejected('A file already exists.');
+      }
+      return {'cancelled': true};
+    });
+    await expectLater(
+      client.upload(
+        BrowserPage.fromJson(browserPage()),
+        'empty',
+        Uint8List(0),
+        onProgress: (_, _) {},
+      ),
+      throwsA(isA<SessionUnavailable>()),
+    );
+  });
+  test('Finder bookmarks are paired during bounded source reads', () async {
+    TestWidgetsFlutterBinding.ensureInitialized();
+    final calls = <String>[];
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(const MethodChannel('desktop_drop'), (
+          call,
+        ) async {
+          calls.add(call.method);
+          return true;
+        });
+    try {
+      final item = DropItemFile.fromData(
+        Uint8List.fromList([1, 2]),
+        path: '/outside/file.bin',
+      )..extraAppleBookmark = Uint8List.fromList([1]);
+      final source = BrowserSource.fromFile(item);
+      expect(await source.length(), 2);
+      expect(await source.read(), [1, 2]);
+      expect(calls, [
+        'startAccessingSecurityScopedResource',
+        'stopAccessingSecurityScopedResource',
+        'startAccessingSecurityScopedResource',
+        'stopAccessingSecurityScopedResource',
+      ]);
+      await expectLater(
+        BrowserSource.fromFile(DropItemDirectory('/tmp', [])).read(),
+        throwsFormatException,
+      );
+      await expectLater(
+        BrowserSource.fromFile(GrowingBrowserSource()).read(),
+        throwsFormatException,
+      );
+      await expectLater(
+        BrowserSource.fromFile(
+          DropItemFile.fromData(
+            Uint8List(1),
+            path: '/huge',
+            length: maxUploadBytes + 1,
+          ),
+        ).read(),
+        throwsFormatException,
+      );
+    } finally {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(const MethodChannel('desktop_drop'), null);
+    }
+  });
   test('lost finish is uncertain and is not retried', () async {
     final calls = <String>[];
     final client = BrowserUpload((op, payload) async {

@@ -1,3 +1,5 @@
+import 'backend_errors.dart';
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
@@ -181,6 +183,10 @@ class BrowserPreview {
   }
 }
 
+class FileRequestRejected extends SessionUnavailable {
+  FileRequestRejected(super.message);
+}
+
 class UploadCancelled implements Exception {
   const UploadCancelled();
 }
@@ -268,7 +274,7 @@ class BrowserUpload {
       onProgress(bytes.length, bytes.length);
       return result['path'] as String;
     } catch (e) {
-      if (finishing) throw const UploadUncertain();
+      if (finishing && e is! FileRequestRejected) throw const UploadUncertain();
       rethrow;
     } finally {
       if (!finished && _token != null) {

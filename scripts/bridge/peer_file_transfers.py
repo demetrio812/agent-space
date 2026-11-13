@@ -60,7 +60,10 @@ class PeerFileTransfers:
                 if op=='fs.finish':self._release(token,cancel=False)
                 else:self.items[token]=(worker,lease,origin,private,time.monotonic())
                 return result
-            except Exception:self._release(token);raise
+            except Exception as error:
+                self._release(token)
+                if op=='fs.finish' and (not isinstance(error,BridgeRejected) or error.code in ('offline','timeout','route_changed','generation_changed')):raise BridgeRejected('upload_uncertain')
+                raise
     def close(self):
         with self.lock:
             for token in list(self.items):self._release(token)

@@ -1373,6 +1373,18 @@ class AppController extends ChangeNotifier {
       if (op != 'fs.cancel' &&
           (!identical(backend, _backend) ||
               !dictationTargetIsCurrent(target, generation))) {
+        final token = result['token'];
+        if (op == 'fs.begin' &&
+            token is String &&
+            RegExp(r'^[0-9a-f]{32}$').hasMatch(token)) {
+          try {
+            await (backend as FileBrowserBackend).fileBrowserRequest(
+              target,
+              'fs.cancel',
+              {'token': token},
+            );
+          } catch (_) {}
+        }
         throw SessionUnavailable();
       }
       return result;

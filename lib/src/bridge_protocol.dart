@@ -1,3 +1,5 @@
+import 'file_browser.dart';
+
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -164,6 +166,8 @@ Object bridgeRejection(Map<String, dynamic> error, {required bool input}) {
     'file_unavailable',
     'file_permission',
     'file_exists',
+    'file_upload_unsupported',
+    'upload_uncertain',
     'file_too_large',
     'file_encoding',
     'file_changed',
@@ -187,13 +191,19 @@ Object bridgeRejection(Map<String, dynamic> error, {required bool input}) {
   }
   if (input && error['dispatched'] == true) return DeliveryUncertain();
   return switch (error['code']) {
-    'file_permission' => SessionUnavailable(
+    'file_permission' => FileRequestRejected(
       'Your account does not have permission for this folder or file.',
     ),
-    'file_exists' => SessionUnavailable(
+    'file_exists' => FileRequestRejected(
       'A file with this name already exists. Rename the local file before uploading.',
     ),
-    'file_unavailable' => SessionUnavailable(
+    'file_upload_unsupported' => FileRequestRejected(
+      'This filesystem does not support atomic uploads. Choose another folder.',
+    ),
+    'upload_uncertain' => SessionUnavailable(
+      'Upload outcome is unknown. Refresh the destination before trying again.',
+    ),
+    'file_unavailable' => FileRequestRejected(
       'This document or folder is unavailable. Refresh the file list.',
     ),
     'file_too_large' => SessionUnavailable(
@@ -202,7 +212,7 @@ Object bridgeRejection(Map<String, dynamic> error, {required bool input}) {
     'file_encoding' => SessionUnavailable(
       'This document is not valid UTF-8 text.',
     ),
-    'file_changed' => SessionUnavailable(
+    'file_changed' => FileRequestRejected(
       'The folder or document changed. Refresh the file list.',
     ),
     'route_changed' => SessionUnavailable(

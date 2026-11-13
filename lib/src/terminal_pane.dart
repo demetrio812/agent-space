@@ -756,7 +756,7 @@ class _TerminalPaneState extends State<TerminalPane> {
                       : TerminalDropTarget(
                           app: app,
                           sessionId: session.key.id,
-                          enabled: widget.visible,
+                          enabled: widget.visible && !filesCovered,
                           onActivate: widget.embedded
                               ? () => app.select(session.key.id)
                               : null,

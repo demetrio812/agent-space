@@ -11,7 +11,7 @@ import 'package:agentspace/src/models.dart';
 import 'package:agentspace/src/project_workspace.dart';
 import 'package:agentspace/src/ui_common.dart';
 
-import 'file_browser_test.dart' show browserPage;
+import 'file_browser_test.dart' show browserPage, hash;
 import 'project_files_test.dart' show ProjectFixture;
 import 'terminal_input_test.dart' show WidgetStore;
 
@@ -20,6 +20,7 @@ class BrowserFixture extends ProjectFixture implements FileBrowserBackend {
   String? failPath;
   Completer<Map<String, dynamic>>? held;
   bool uploadHeld = false;
+  Completer<Map<String, dynamic>>? beginHold;
   @override
   Future<Map<String, dynamic>> fileBrowserRequest(
     SessionInfo session,
@@ -32,6 +33,7 @@ class BrowserFixture extends ProjectFixture implements FileBrowserBackend {
       if (held != null) return held!.future;
       return browserPage(p['path'] == '' ? '/project' : p['path'] as String);
     }
+    if (op == 'fs.begin' && beginHold != null) return beginHold!.future;
     if (op == 'fs.begin') return {'token': 'b' * 32, 'offset': 0};
     if (op == 'fs.chunk') {
       if (uploadHeld) {
@@ -49,6 +51,34 @@ class BrowserFixture extends ProjectFixture implements FileBrowserBackend {
       };
     }
     return {'cancelled': true};
+  }
+}
+
+class UploadRaceFixture extends BrowserFixture {
+  final first = Completer<Map<String, dynamic>>(),
+      second = Completer<Map<String, dynamic>>();
+  final cancelled = <String>[];
+  int starts = 0;
+  @override
+  Future<Map<String, dynamic>> fileBrowserRequest(
+    SessionInfo s,
+    String op,
+    Map<String, dynamic> p,
+  ) async {
+    if (op == 'fs.begin') {
+      return {
+        'token': (++starts).toRadixString(16).padLeft(32, '0'),
+        'offset': 0,
+      };
+    }
+    if (op == 'fs.chunk') {
+      return p['token'] == '1'.padLeft(32, '0') ? first.future : second.future;
+    }
+    if (op == 'fs.cancel') {
+      cancelled.add(p['token'] as String);
+      return {'cancelled': true};
+    }
+    return super.fileBrowserRequest(s, op, p);
   }
 }
 
@@ -263,6 +293,162 @@ void main() {
       await tester.runAsync(app.shutdown);
     }
   });
+  testWidgets('uncommitted location disables uploads', (tester) async {
+    final backend = BrowserFixture();
+    final app = AppController(
+      snapshot: AppSnapshot(),
+      store: WidgetStore(),
+      backendFactory: (_) => backend,
+    );
+    await app.start(polling: false);
+    app.select(backend.session.key.id);
+    try {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SessionFileBrowser(
+              app: app,
+              session: backend.session,
+              active: true,
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.enterText(
+        find.byKey(const ValueKey('browser-path')),
+        '/elsewhere',
+      );
+      await tester.pump();
+      expect(
+        tester
+            .widgetList<IconButton>(find.byType(IconButton))
+            .firstWhere((b) => b.tooltip == 'Upload files')
+            .onPressed,
+        isNull,
+      );
+    } finally {
+      await tester.pumpWidget(const SizedBox());
+      await tester.runAsync(app.shutdown);
+    }
+  });
+  testWidgets('surviving Files widget refreshes after reconnect', (
+    tester,
+  ) async {
+    final first = BrowserFixture(), second = BrowserFixture();
+    var builds = 0;
+    final app = AppController(
+      snapshot: AppSnapshot(),
+      store: WidgetStore(),
+      backendFactory: (_) => builds++ == 0 ? first : second,
+    );
+    await app.start(polling: false);
+    app.select(first.session.key.id);
+    Widget view() => MaterialApp(
+      home: Scaffold(
+        body: SessionFileBrowser(
+          app: app,
+          session: first.session,
+          active: true,
+        ),
+      ),
+    );
+    try {
+      await tester.pumpWidget(view());
+      await tester.pump();
+      await tester.runAsync(app.reconnect);
+      await tester.pumpWidget(view());
+      await tester.pump();
+      await tester.tap(find.byTooltip('Refresh folder'));
+      await tester.pump();
+      expect(second.calls, contains('fs.list:/project'));
+    } finally {
+      await tester.pumpWidget(const SizedBox());
+      await tester.runAsync(app.shutdown);
+    }
+  });
+  test(
+    'late begin acknowledgement is cancelled through its original backend',
+    () async {
+      final backend = BrowserFixture(),
+          hold = Completer<Map<String, dynamic>>();
+      final app = AppController(
+        snapshot: AppSnapshot(),
+        store: WidgetStore(),
+        backendFactory: (_) => backend,
+      );
+      await app.start(polling: false);
+      app.select(backend.session.key.id);
+      backend.beginHold = hold;
+      final executor = app.fileBrowserExecutor(backend.session);
+      final future = executor('fs.begin', {
+        'path': '/project',
+        'scope': hash,
+        'name': 'empty',
+        'size': 0,
+        'sha256': hash,
+      });
+      final error = expectLater(future, throwsA(isA<Exception>()));
+      app.overview();
+      hold.complete({'token': 'b' * 32, 'offset': 0});
+      await error;
+      expect(backend.calls, contains('fs.cancel:'));
+      await app.shutdown();
+    },
+  );
+  testWidgets(
+    'old upload completion cannot clear a newer cancellation handle',
+    (tester) async {
+      final backend = UploadRaceFixture(),
+          app = AppController(
+            snapshot: AppSnapshot(),
+            store: WidgetStore(),
+            backendFactory: (_) => backend,
+          );
+      await app.start(polling: false);
+      app.select(backend.session.key.id);
+      Widget view(bool active) => MaterialApp(
+        home: Scaffold(
+          body: SessionFileBrowser(
+            app: app,
+            session: backend.session,
+            active: active,
+            pickFiles: () async => [
+              BrowserSource(
+                'test.txt',
+                () async => 1,
+                () async => Uint8List.fromList([65]),
+              ),
+            ],
+          ),
+        ),
+      );
+      try {
+        await tester.pumpWidget(view(true));
+        await tester.pump();
+        await tester.tap(find.byTooltip('Upload files'));
+        await tester.pump();
+        expect(backend.starts, 1);
+        await tester.pumpWidget(view(false));
+        await tester.pumpWidget(view(true));
+        await tester.pump();
+        await tester.tap(find.byTooltip('Upload files'));
+        await tester.pump();
+        expect(backend.starts, 2);
+        backend.first.complete({'offset': 1});
+        await tester.pump();
+        await tester.pump();
+        await tester.tap(find.text('Cancel'));
+        await tester.pump();
+        expect(backend.cancelled, contains('2'.padLeft(32, '0')));
+        backend.second.complete({'offset': 1});
+        await tester.pump();
+      } finally {
+        await tester.pumpWidget(const SizedBox());
+        await tester.runAsync(app.shutdown);
+      }
+    },
+  );
   testWidgets('background ignores late directory response', (tester) async {
     final backend = BrowserFixture();
     backend.held = Completer();

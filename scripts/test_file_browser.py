@@ -70,6 +70,34 @@ class FileBrowserTests(unittest.TestCase):
             with self.assertRaises(BridgeRejected):self.request('chunk',{'token':token,'offset':0,'bytes':'YQ=='})
             self.assertEqual(list(self.root.iterdir()),[]);self.assertEqual(list(saved.iterdir()),[])
         finally:self.root.rmdir();saved.rename(self.root)
+    def test_staged_inode_digest_and_size_are_verified_before_publication(self):
+        data=b'\x00hello';token=self.begin()['token']
+        self.request('chunk',{'token':token,'offset':0,'bytes':base64.b64encode(data).decode()})
+        os.pwrite(self.browser.pending[token]['fd'],b'WRONG!',0)
+        with self.assertRaises(BridgeRejected):self.request('finish',{'token':token})
+        self.assertFalse((self.root/'hello.bin').exists())
+    def test_cancel_keeps_a_replacement_it_does_not_own(self):
+        token=self.begin()['token'];item=self.browser.pending[token];directory=item.get('stage',item['dir'])
+        os.unlink(item['temp'],dir_fd=directory)
+        other=os.open(item['temp'],os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600,dir_fd=directory);os.write(other,b'unrelated');os.close(other)
+        held=os.dup(directory)
+        try:
+            self.request('cancel',{'token':token})
+            check=os.open(item['temp'],os.O_RDONLY,dir_fd=held)
+            try:self.assertEqual(os.read(check,100),b'unrelated')
+            finally:os.close(check)
+        finally:os.close(held)
+    def test_search_only_ancestor_and_no_hardlink_filesystem(self):
+        from unittest.mock import patch
+        import errno
+        parent=self.root/'passage';parent.mkdir();child=parent/'readable';child.mkdir();(child/'ok').touch()
+        parent.chmod(0o111)
+        try:self.assertEqual(self.page(str(child))['entries'][0]['name'],'ok')
+        finally:parent.chmod(0o700)
+        token=self.begin('empty',b'')['token']
+        with patch('bridge.file_browser.os.link',side_effect=OSError(errno.ENOTSUP,'No hard links')):
+            self.assertTrue(self.request('finish',{'token':token})['uploaded'])
+
     def test_limits_and_payloads(self):
         for name in ('../outside','/absolute','.','..','a/b','bad\x00name'):
             with self.assertRaises(BridgeRejected):self.begin(name)

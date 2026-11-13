@@ -1,6 +1,9 @@
 """Account-permitted browsing and atomic, no-replace uploads; never terminal input."""
 from contextlib import contextmanager
 import base64
+import ctypes
+import errno
+import sys
 import hashlib
 import itertools
 import json
@@ -46,12 +49,40 @@ def validate_payload(op,p):
     return p
 
 def open_directory(path):
-    fd=os.open('/',os.O_RDONLY|os.O_DIRECTORY)
+    search=getattr(os,'O_SEARCH',0x40000000 if sys.platform=='darwin' else getattr(os,'O_PATH',os.O_RDONLY))
+    fd=os.open('/',search|os.O_DIRECTORY)
     try:
-        for part in path.parts[1:]:
-            new=os.open(part,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=fd);os.close(fd);fd=new
+        for index,part in enumerate(path.parts[1:]):
+            access=os.O_RDONLY if index==len(path.parts)-2 else search
+            new=os.open(part,access|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=fd);os.close(fd);fd=new
+        if len(path.parts)==1:
+            os.close(fd);fd=os.open('/',os.O_RDONLY|os.O_DIRECTORY)
         return fd
     except BaseException:os.close(fd);raise
+
+def same_inode(info,expected):return stat.S_ISREG(info.st_mode) and (info.st_dev,info.st_ino)==expected
+
+def unlink_owned(directory,name,identity):
+    try:
+        if same_inode(os.stat(name,dir_fd=directory,follow_symlinks=False),identity):os.unlink(name,dir_fd=directory)
+    except FileNotFoundError:pass
+
+def publish_exclusive(source_dir,source,destination_dir,destination):
+    # Native exclusive rename also supports writable FAT/exFAT destinations
+    # that cannot hard-link. Never fall back to an overwriting rename.
+    libc=ctypes.CDLL(None,use_errno=True)
+    name='renameatx_np' if sys.platform=='darwin' else 'renameat2'
+    function=getattr(libc,name,None)
+    if function is not None:
+        function.argtypes=[ctypes.c_int,ctypes.c_char_p,ctypes.c_int,ctypes.c_char_p,ctypes.c_uint];function.restype=ctypes.c_int
+        result=function(source_dir,os.fsencode(source),destination_dir,os.fsencode(destination),4 if sys.platform=='darwin' else 1)
+        if result==0:return
+        code=ctypes.get_errno()
+        if code not in (errno.ENOSYS,errno.ENOTSUP,errno.EINVAL):raise OSError(code,os.strerror(code))
+    try:os.link(source,destination,src_dir_fd=source_dir,dst_dir_fd=destination_dir,follow_symlinks=False)
+    except OSError as error:
+        if error.errno in (errno.ENOTSUP,errno.ENOSYS,errno.EPERM):raise BridgeRejected('file_upload_unsupported')
+        raise
 
 class FileBrowser:
     def __init__(self,api):self.api=api;self.pending={};self.lock=threading.RLock();self.closed=False
@@ -88,7 +119,7 @@ class FileBrowser:
                 kind='directory' if stat.S_ISDIR(info.st_mode) else 'file' if stat.S_ISREG(info.st_mode) else 'link' if stat.S_ISLNK(info.st_mode) else 'other'
                 row={'name':name,'kind':kind,'size':max(0,min(info.st_size,2**53-1)),'revision':revision(info)}
                 encoded=len(json.dumps(row,ensure_ascii=True).encode())
-                if len(rows)>=1000 or budget+encoded>500*1024:limited=True;continue
+                if len(rows)>=1000 or budget+encoded>480*1024:limited=True;continue
                 budget+=encoded;rows.append(row)
             self._check(route,path,scope)
             return {'path':str(path),'home':str(Path.home().resolve()),'scope':scope,'entries':sorted(rows,key=lambda r:(r['kind']!='directory',r['name'].casefold())),'limited':limited}
@@ -110,16 +141,21 @@ class FileBrowser:
             try:text=data.decode('utf-8-sig')
             except UnicodeError:raise BridgeRejected('file_encoding')
             self._check(route,path,scope);identifier=digest([scope,p['name']])
-            return {'file':{'id':identifier,'name':p['name'],'path':p['name'],'kind':'html' if suffix in ('.html','.htm') else 'markdown','section':'files','feature':'','revision':p['revision']},
+            result={'file':{'id':identifier,'name':p['name'],'path':p['name'],'kind':'html' if suffix in ('.html','.htm') else 'markdown','section':'files','feature':'','revision':p['revision']},
                     'document':{'scope':scope,'file':identifier,'revision':p['revision'],'text':text}}
+            if len(json.dumps(result,ensure_ascii=True).encode())>1024*1024:raise BridgeRejected('file_too_large')
+            return result
     def discard(self,token):
         item=self.pending.pop(token,None)
         if item:
             try:
-                os.close(item['fd'])
-                try:os.unlink(item['temp'],dir_fd=item['dir'])
-                except FileNotFoundError:pass
-            finally:os.close(item['dir'])
+                unlink_owned(item['stage'],item['temp'],item['identity'])
+                try:
+                    info=os.stat(item['stage_name'],dir_fd=item['dir'],follow_symlinks=False)
+                    if stat.S_ISDIR(info.st_mode) and (info.st_dev,info.st_ino)==item['stage_identity']:os.rmdir(item['stage_name'],dir_fd=item['dir'])
+                except (FileNotFoundError,OSError):pass
+            finally:
+                for key in ('fd','stage','dir'):os.close(item[key])
     def reap(self):
         with self.lock:
             for token,item in list(self.pending.items()):
@@ -139,17 +175,22 @@ class FileBrowser:
                     try:os.stat(p['name'],dir_fd=fd,follow_symlinks=False)
                     except FileNotFoundError:pass
                     else:raise BridgeRejected('file_exists')
-                    token=secrets.token_hex(16);temp='.agentspace-upload-'+token+'.part'
-                    source=os.open(temp,os.O_RDWR|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600,dir_fd=fd)
-                    self.pending[token]={**p,'route':dict(route),'path':str(path),'dir':os.dup(fd),'fd':source,'temp':temp,'offset':0,'hash':hashlib.sha256(),'last':time.monotonic()}
+                    token=secrets.token_hex(16);stage_name='.agentspace-upload-'+token;temp='content.part'
+                    os.mkdir(stage_name,0o700,dir_fd=fd)
+                    stage=os.open(stage_name,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=fd)
+                    try:source=os.open(temp,os.O_RDWR|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600,dir_fd=stage)
+                    except BaseException:os.close(stage);os.rmdir(stage_name,dir_fd=fd);raise
+                    info=os.fstat(source);stage_info=os.fstat(stage)
+                    self.pending[token]={**p,'route':dict(route),'path':str(path),'dir':os.dup(fd),'stage':stage,'stage_name':stage_name,'stage_identity':(stage_info.st_dev,stage_info.st_ino),'fd':source,'temp':temp,'identity':(info.st_dev,info.st_ino),'offset':0,'hash':hashlib.sha256(),'last':time.monotonic()}
                     return {'token':token,'offset':0}
             token=p['token'];item=self.pending.get(token)
             if item is None and op=='fs.cancel':return {'cancelled':True}
             if item is None or item['route']!=route:raise BridgeRejected('route_changed')
             if op=='fs.cancel':self.discard(token);return {'cancelled':True}
+            published=False
             try:
                 self._check(route,item['path'],item['scope'])
-                opened=os.fstat(item['fd']);named=os.stat(item['temp'],dir_fd=item['dir'],follow_symlinks=False)
+                opened=os.fstat(item['fd']);named=os.stat(item['temp'],dir_fd=item['stage'],follow_symlinks=False)
                 if not stat.S_ISREG(named.st_mode) or (opened.st_dev,opened.st_ino)!=(named.st_dev,named.st_ino):raise BridgeRejected('file_changed')
                 if op=='fs.chunk':
                     data=base64.b64decode(p['bytes'],validate=True)
@@ -162,17 +203,30 @@ class FileBrowser:
                     item['hash'].update(data);item['offset']+=len(data);item['last']=time.monotonic()
                     return {'offset':item['offset']}
                 if item['offset']!=item['size'] or item['hash'].hexdigest()!=item['sha256']:raise BridgeRejected('invalid_request')
-                os.fsync(item['fd']);self._check(route,item['path'],item['scope'])
-                try:os.link(item['temp'],item['name'],src_dir_fd=item['dir'],dst_dir_fd=item['dir'],follow_symlinks=False)
+                os.fsync(item['fd'])
+                before=os.fstat(item['fd']);actual=hashlib.sha256();offset=0
+                if before.st_size!=item['size']:raise BridgeRejected('file_changed')
+                while offset<item['size']:
+                    data=os.pread(item['fd'],min(MAX_CHUNK,item['size']-offset),offset)
+                    if not data:raise BridgeRejected('file_changed')
+                    actual.update(data);offset+=len(data)
+                if actual.hexdigest()!=item['sha256'] or revision(before)!=revision(os.fstat(item['fd'])):raise BridgeRejected('file_changed')
+                self._check(route,item['path'],item['scope'])
+                if not same_inode(os.stat(item['temp'],dir_fd=item['stage'],follow_symlinks=False),item['identity']):raise BridgeRejected('file_changed')
+                try:publish_exclusive(item['stage'],item['temp'],item['dir'],item['name'])
                 except FileExistsError:raise BridgeRejected('file_exists')
+                published=True
                 final=os.stat(item['name'],dir_fd=item['dir'],follow_symlinks=False)
                 if not stat.S_ISREG(final.st_mode) or (opened.st_dev,opened.st_ino)!=(final.st_dev,final.st_ino):
-                    os.unlink(item['name'],dir_fd=item['dir']);raise BridgeRejected('file_changed')
+                    raise BridgeRejected('file_changed')
                 result={'uploaded':True,'path':str(Path(item['path'])/item['name']),'size':item['size'],'sha256':item['sha256']}
                 self.discard(token);return result
-            except PermissionError:self.discard(token);raise BridgeRejected('file_permission')
-            except OSError:self.discard(token);raise BridgeRejected('file_unavailable')
-            except Exception:self.discard(token);raise
+            except Exception as error:
+                self.discard(token)
+                if published:raise BridgeRejected('upload_uncertain')
+                if isinstance(error,PermissionError):raise BridgeRejected('file_permission')
+                if isinstance(error,OSError):raise BridgeRejected('file_unavailable')
+                raise
     def close(self):
         with self.lock:
             self.closed=True

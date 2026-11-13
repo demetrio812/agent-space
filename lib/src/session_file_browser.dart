@@ -15,6 +15,47 @@ import 'ui_common.dart';
 
 class BrowserSource {
   const BrowserSource(this.name, this.length, this.read);
+  factory BrowserSource.fromFile(XFile file) => BrowserSource(
+    file.name,
+    () => _access(file, () async => file.length()),
+    () => _access(file, () async {
+      if (await file.length() > maxUploadBytes) {
+        throw const FormatException('Choose files up to 32 MiB each.');
+      }
+      final bytes = BytesBuilder(copy: false);
+      await for (final chunk in file.openRead()) {
+        if (bytes.length + chunk.length > maxUploadBytes) {
+          throw const FormatException('Choose files up to 32 MiB each.');
+        }
+        bytes.add(chunk);
+      }
+      return bytes.takeBytes();
+    }),
+  );
+  static Future<T> _access<T>(XFile file, Future<T> Function() body) async {
+    if (file is DropItemDirectory) {
+      throw const FormatException('Choose files, rather than folders.');
+    }
+    final bookmark = file is DropItem ? file.extraAppleBookmark : null;
+    bool scoped = false;
+    try {
+      if (bookmark != null && bookmark.isNotEmpty) {
+        scoped = await DesktopDrop.instance
+            .startAccessingSecurityScopedResource(bookmark: bookmark);
+        if (!scoped) {
+          throw const FormatException('Could not read this dropped file.');
+        }
+      }
+      return await body();
+    } finally {
+      if (scoped) {
+        await DesktopDrop.instance.stopAccessingSecurityScopedResource(
+          bookmark: bookmark!,
+        );
+      }
+    }
+  }
+
   final String name;
   final Future<int> Function() length;
   final Future<Uint8List> Function() read;
@@ -38,7 +79,7 @@ class SessionFileBrowser extends StatefulWidget {
 
 class _SessionFileBrowserState extends State<SessionFileBrowser> {
   final path = TextEditingController(), search = TextEditingController();
-  late BrowserRequest request;
+  BrowserRequest get request => widget.app.fileBrowserExecutor(widget.session);
   BrowserPage? page;
   BrowserPreview? preview;
   BrowserUpload? upload;
@@ -50,10 +91,15 @@ class _SessionFileBrowserState extends State<SessionFileBrowser> {
   @override
   void initState() {
     super.initState();
-    request = widget.app.fileBrowserExecutor(widget.session);
+    path.addListener(_pathChanged);
     if (widget.active) unawaited(_load(''));
   }
 
+  void _pathChanged() {
+    if (mounted) setState(() {});
+  }
+
+  bool get committed => page != null && path.text == page!.path;
   bool _current(int token) => mounted && widget.active && token == epoch;
   @override
   void didUpdateWidget(covariant SessionFileBrowser old) {
@@ -71,6 +117,7 @@ class _SessionFileBrowserState extends State<SessionFileBrowser> {
   void dispose() {
     epoch++;
     upload?.cancel();
+    path.removeListener(_pathChanged);
     path.dispose();
     search.dispose();
     super.dispose();
@@ -156,13 +203,11 @@ class _SessionFileBrowserState extends State<SessionFileBrowser> {
 
   Future<List<BrowserSource>> _pick() async {
     final files = await openFiles(confirmButtonText: 'Upload');
-    return files
-        .map((f) => BrowserSource(f.name, f.length, f.readAsBytes))
-        .toList();
+    return files.map(BrowserSource.fromFile).toList();
   }
 
   Future<void> _choose() async {
-    if (uploading || busy || page == null) return;
+    if (uploading || busy || !committed) return;
     final token = epoch, destination = page!;
     try {
       final sources = await (widget.pickFiles ?? _pick)();
@@ -181,7 +226,8 @@ class _SessionFileBrowserState extends State<SessionFileBrowser> {
         page == null ||
         uploading ||
         busy ||
-        !widget.active) {
+        !widget.active ||
+        !committed) {
       return;
     }
     if (sources.length > 20) {
@@ -191,6 +237,7 @@ class _SessionFileBrowserState extends State<SessionFileBrowser> {
     final destination = page!, token = ++epoch;
     int completed = 0;
     bool failed = false;
+    BrowserUpload? operation;
     setState(() {
       uploading = true;
       cancelRequested = false;
@@ -221,6 +268,7 @@ class _SessionFileBrowserState extends State<SessionFileBrowser> {
           );
         }
         final task = BrowserUpload(request);
+        operation = task;
         upload = task;
         await task.upload(
           destination,
@@ -236,7 +284,7 @@ class _SessionFileBrowserState extends State<SessionFileBrowser> {
           },
         );
         completed++;
-        upload = null;
+        if (identical(upload, task)) upload = null;
       }
       if (_current(token)) {
         setState(
@@ -258,7 +306,7 @@ class _SessionFileBrowserState extends State<SessionFileBrowser> {
         );
       }
     } finally {
-      upload = null;
+      if (identical(upload, operation)) upload = null;
       if (_current(token)) {
         setState(() => uploading = false);
         // Refresh the same captured location without hiding an outcome warning.
@@ -346,18 +394,13 @@ class _SessionFileBrowserState extends State<SessionFileBrowser> {
             .toList() ??
         <BrowserEntry>[];
     return DropTarget(
-      enable: enabled && folder != null,
+      enable:
+          enabled && committed && ModalRoute.of(context)?.isCurrent != false,
       onDragEntered: (_) => setState(() => dragging = true),
       onDragExited: (_) => setState(() => dragging = false),
       onDragDone: (details) {
         setState(() => dragging = false);
-        unawaited(
-          _upload(
-            details.files
-                .map((f) => BrowserSource(f.name, f.length, f.readAsBytes))
-                .toList(),
-          ),
-        );
+        unawaited(_upload(details.files.map(BrowserSource.fromFile).toList()));
       },
       child: _fit(
         Container(
@@ -414,7 +457,7 @@ class _SessionFileBrowserState extends State<SessionFileBrowser> {
                     ),
                     IconButton(
                       tooltip: 'Upload files',
-                      onPressed: enabled && folder != null
+                      onPressed: enabled && committed
                           ? () => unawaited(_choose())
                           : null,
                       icon: const Icon(Icons.upload_file_outlined, size: 19),
