@@ -11,6 +11,7 @@ from concurrent.futures import ThreadPoolExecutor
 from bridge.gateway import Machine, MachineRegistry, PeerPool, GatewayWorker, ssh_arguments
 from bridge.image_transfers import ImageTransfers
 from bridge.conversation import ConversationReader
+from bridge.project_files import ProjectFiles
 from bridge.local_api import LocalApi
 from bridge.session_actions import SessionActions
 from bridge.protocol import BridgeRejected
@@ -26,6 +27,8 @@ class ApiPeer:
         self.connector=connector
         self.images=ImageTransfers(self.api,herdr.root/'images')
     def request(self, row, on_event=None, timeout=6):
+        if row['op']=='files.list': return ProjectFiles(self.api).listing(row['route'])
+        if row['op']=='files.read': return ProjectFiles(self.api).read(row['route'],row['payload'])
         if row['op']=='chat.read':
             return ConversationReader(self.api,projects=self.api.__dict__.get('projects',self.connector.test.root/'empty-projects')).read(row['route'],row['payload'])
         if row['op'].startswith('image.'):
@@ -105,6 +108,20 @@ class GatewayTests(unittest.TestCase):
         self.assertFalse(self.herdrs[a.id].calls)
         self.assertTrue(any(r['method']=='pane.list' for r in self.herdrs[b.id].calls))
         self.assertFalse(any(r['method'].startswith('pane.send') for r in self.herdrs[b.id].calls))
+
+    def test_project_files_read_only_from_selected_peer_with_colliding_ids(self):
+        a=self.machine(1); b=self.machine(2); worker=self.worker('discovery')
+        for node,label in [(a,'Alpha'),(b,'Beta')]:
+            host=self.herdrs[node.id]
+            host.agents[0]['foreground_cwd']=str(host.root)
+            (host.root/'README.md').write_text(label)
+        route=self.route(b)
+        page=worker.operation({'op':'files.list','route':route,'payload':{}})
+        self.assertEqual([f['name'] for f in page['files']],['README.md'])
+        result=worker.operation({'op':'files.read','route':route,'payload':{'scope':page['scope'],'file':page['files'][0]['id']}})
+        self.assertEqual(result['text'],'Beta')
+        self.assertFalse(self.herdrs[a.id].calls)
+        self.assertFalse(any(c['method'].startswith('pane.send') for c in self.herdrs[b.id].calls))
 
     def test_management_routes_colliding_ids_only_to_captured_peer(self):
         a=self.machine(1); b=self.machine(2,session='work'); worker=self.management_worker()

@@ -228,4 +228,18 @@ final class BridgeJobTests: XCTestCase {
     }
     XCTAssertThrowsError(try validateBridgeEnvelope(row("input","chat.send",["session":sid,"text":" /model"]),configuration:input))
   }
+  func testProjectFilesAreDiscoveryOnlyAndNeverAcceptPaths() throws {
+    let c=try config()
+    let route:[String:Any]=["machine":"gateway","session":"default","targetHash":String(repeating:"a",count:64),"generation":String(repeating:"b",count:64),"terminal":"t1","pane":"p1"]
+    func row(_ op:String,_ payload:[String:Any]) -> [String:Any] {
+      ["type":"request","protocol":"agentspace-bridge-v2","nonce":c.nonce,"lane":"discovery","id":"1","op":op,"route":route,"payload":payload]
+    }
+    XCTAssertNoThrow(try validateBridgeEnvelope(row("files.list",[:]),configuration:c))
+    XCTAssertNoThrow(try validateBridgeEnvelope(row("files.read",["scope":String(repeating:"c",count:64),"file":String(repeating:"d",count:64)]),configuration:c))
+    for payload:[String:Any] in [["path":"/tmp/private"],["scope":"../outside","file":String(repeating:"d",count:64)]] {
+      XCTAssertThrowsError(try validateBridgeEnvelope(row("files.read",payload),configuration:c))
+    }
+    XCTAssertThrowsError(try validateBridgeEnvelope(row("files.list",["cwd":"/tmp"]),configuration:c))
+  }
+
 }

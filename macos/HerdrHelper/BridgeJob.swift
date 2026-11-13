@@ -48,7 +48,7 @@ func validateBridgeEnvelope(_ row:[String:Any],configuration:BridgeConfiguration
     return text.range(of:pattern,options:.regularExpression) != nil
   }
   let fields=Set(["type","protocol","nonce","lane","id","op","payload","route"])
-  let operations:[String:Set<String>]=["discovery":["catalog","machines","chat.read","health"],"input":["input","send","chat.send","rename","close","create","workspace.create","workspace.rename","workspace.close","health"],"streams":["observe","resize","scroll","click","cancel","health"],"transfer":["image.begin","image.chunk","image.finish","image.cancel","health"]]
+  let operations:[String:Set<String>]=["discovery":["catalog","machines","chat.read","files.list","files.read","health"],"input":["input","send","chat.send","rename","close","create","workspace.create","workspace.rename","workspace.close","health"],"streams":["observe","resize","scroll","click","cancel","health"],"transfer":["image.begin","image.chunk","image.finish","image.cancel","health"]]
   guard Set(row.keys).isSubset(of:fields), row["type"] as? String=="request",
         row["protocol"] as? String=="agentspace-bridge-v2", row["nonce"] as? String==configuration.nonce,
         row["lane"] as? String==configuration.lane, match(row["id"],#"^[1-9][0-9]{0,15}$"#),
@@ -56,7 +56,7 @@ func validateBridgeEnvelope(_ row:[String:Any],configuration:BridgeConfiguration
         let payload=row["payload"] as? [String:Any] else { throw HelperFault(message:"Unsupported bridge action.") }
   let terminalPattern=#"^[A-Za-z0-9_.:@%+/][A-Za-z0-9_.:@%+/-]{0,255}$"#
   var pane="p1"
-  if op.hasPrefix("image.") || op.hasPrefix("chat.") || ["input","send","observe","rename","close","create","workspace.create","workspace.rename","workspace.close"].contains(op) {
+  if op.hasPrefix("files.") || op.hasPrefix("image.") || op.hasPrefix("chat.") || ["input","send","observe","rename","close","create","workspace.create","workspace.rename","workspace.close"].contains(op) {
     let routeFields:Set<String> = ["create","workspace.create","workspace.rename","workspace.close"].contains(op) ? ["machine","session","targetHash","generation"] : ["machine","session","targetHash","generation","terminal","pane"]
     guard let route=row["route"] as? [String:Any], Set(route.keys)==routeFields,
           match(route["machine"],#"^(?:gateway|[0-9a-f]{32})$"#), match(route["session"],#"^[A-Za-z0-9_.-]{1,64}$"#),
@@ -76,6 +76,10 @@ func validateBridgeEnvelope(_ row:[String:Any],configuration:BridgeConfiguration
     return !text.unicodeScalars.contains { $0.value<32 || (127..<160).contains($0.value) }
   }
   switch op {
+  case "files.list":
+    guard payload.isEmpty else { throw HelperFault(message:"Invalid project file listing.") }
+  case "files.read":
+    guard Set(payload.keys)==Set(["scope","file"]),["scope","file"].allSatisfy({ match(payload[$0],#"^[0-9a-f]{64}$"#) }) else { throw HelperFault(message:"Invalid project file read.") }
   case "chat.read":
     let uuid=#"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"#
     guard Set(payload.keys)==Set(["session","before"]),

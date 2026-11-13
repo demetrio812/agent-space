@@ -68,3 +68,6 @@ test/fixtures/__pycache__/
 *.dmg
 /dist/
 /work/
+
+# Disposable local design previews, never public source or session keys
+.superpowers/brainstorm/

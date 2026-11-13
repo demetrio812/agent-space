@@ -14,6 +14,7 @@ import time
 try:
     from .protocol import PROTOCOL, BridgeRejected, DeliveryUncertain, validate_request, read_record, write_record
     from .image_transfers import ImageTransfers
+    from .project_files import ProjectFiles, validate_payload as validate_files
     from .conversation import ConversationReader, validate_payload as validate_chat
     from .git_metadata import GitMetadata
     from .local_api import LocalApi
@@ -22,6 +23,7 @@ try:
 except ImportError:
     from protocol import PROTOCOL, BridgeRejected, DeliveryUncertain, validate_request, read_record, write_record
     from image_transfers import ImageTransfers
+    from project_files import ProjectFiles, validate_payload as validate_files
     from conversation import ConversationReader, validate_payload as validate_chat
     from git_metadata import GitMetadata
     from local_api import LocalApi
@@ -64,6 +66,7 @@ class LocalWorker:
         self.images = None
         self.git_metadata = GitMetadata(self.closed)
         self.conversation = ConversationReader(self.api)
+        self.project_files = ProjectFiles(self.api)
         self._writer.start()
         threading.Thread(target=self._reap_images,daemon=True).start()
 
@@ -152,7 +155,7 @@ class LocalWorker:
         compatible=self.compatible()
         return {'type':'hello','protocol':PROTOCOL,'digest':self.config['digest'],
                 'nonce':self.nonce,'lane':self.lane,'generation':generation,
-                'capabilities':{'conversation':True,'management':self.management_enabled(),'catalog':True,'machines':False,'network':False,'observe':compatible,
+                'capabilities':{'projectFiles':True,'conversation':True,'management':self.management_enabled(),'catalog':True,'machines':False,'network':False,'observe':compatible,
                                 'images':self.image_enabled(),'input':compatible and self.config.get('allowInput',True),'viewport':compatible and self.config.get('allowInput',True)}}
 
     def handle(self, row):
@@ -187,6 +190,10 @@ class LocalWorker:
     def operation(self, row):
         op, payload = row['op'], row['payload']
         if op == 'health': return {'alive':True}
+        if op in ('files.list','files.read'):
+            validate_files(op,payload)
+            route=validate_management_route('rename',row.get('route')); check_worker_origin(self.config,route)
+            return self.project_files.listing(route) if op=='files.list' else self.project_files.read(route,payload)
         if op in ('chat.read','chat.send'):
             validate_chat(op,payload)
             route=validate_management_route('rename',row.get('route')); check_worker_origin(self.config,route)

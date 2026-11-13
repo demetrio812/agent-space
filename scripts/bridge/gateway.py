@@ -20,6 +20,7 @@ import time
 import zipfile
 
 try:
+    from .project_files import validate_payload as validate_files
     from .conversation import validate_payload as validate_chat
     from .image_transfers import validate_image_payload
     from .session_actions import MANAGEMENT, SessionActions, validate_management_route, validate_action, check_worker_origin
@@ -28,6 +29,7 @@ try:
     from .protocol import PROTOCOL, BridgeRejected, DeliveryUncertain, read_record, write_record
     from .gate_rules import gate
 except ImportError:
+    from project_files import validate_payload as validate_files
     from conversation import validate_payload as validate_chat
     from image_transfers import validate_image_payload
     from session_actions import MANAGEMENT, SessionActions, validate_management_route, validate_action, check_worker_origin
@@ -516,6 +518,16 @@ class GatewayWorker(LocalWorker):
 
     def operation(self,row):
         op=row['op']; route=row.get('route')
+        if op in ('files.list','files.read'):
+            validate_files(op,row['payload']); validate_management_route('rename',route)
+            if route['machine']=='gateway': return super().operation(row)
+            machine=self.registry.require(route)
+            with self.pool.lease(machine,'discovery',self.priority|{machine.id}) as worker:
+                self.registry.require(route)
+                if self.closed.is_set(): raise BridgeRejected('offline')
+                result=worker.request({'op':op,'route':route,'payload':row['payload']},timeout=30)
+                self.registry.require(route)
+                return result
         if op in ('chat.read','chat.send'):
             validate_chat(op,row['payload']); validate_management_route('rename',route)
             if op=='chat.send' and not self.config.get('allowInput',True): raise BridgeRejected('unsupported')
