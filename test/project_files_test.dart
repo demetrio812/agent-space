@@ -1,3 +1,5 @@
+import 'package:agentspace/src/backend.dart';
+
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -46,6 +48,7 @@ Map<String, dynamic> projectManifest() => {
 
 class ProjectFixture extends InputFixture implements ProjectFilesBackend {
   int lists = 0, reads = 0;
+  bool failReads = false;
   Completer<ProjectManifest>? manifestHold;
   Map<String, dynamic> manifest = projectManifest();
   final texts = <String, String>{};
@@ -64,6 +67,9 @@ class ProjectFixture extends InputFixture implements ProjectFilesBackend {
     String file,
   ) async {
     reads++;
+    if (failReads) {
+      throw SessionUnavailable('This document exceeds the preview limit.');
+    }
     if (scope != fileScope) throw StateError('Wrong scope');
     return ProjectDocument.fromJson({
       'scope': scope,
@@ -138,7 +144,8 @@ void main() {
     expect(json.toString(), isNot(contains('Complete document')));
   });
   test('file reads reject replies after the connection is replaced', () async {
-    final backend = ProjectFixture()..manifestHold = Completer<ProjectManifest>();
+    final backend = ProjectFixture()
+      ..manifestHold = Completer<ProjectManifest>();
     final app = AppController(
       snapshot: AppSnapshot(),
       store: WidgetStore(),

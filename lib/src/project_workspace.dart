@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -40,6 +41,8 @@ class _ProjectWorkspaceState extends State<ProjectWorkspace> {
   final search = TextEditingController();
   final focus = FocusNode();
   final coverOwner = Object();
+  final sessionSlot = GlobalKey();
+  String? savedPreference;
   bool get running =>
       widget.active &&
       widget.app.isActive &&
@@ -63,10 +66,24 @@ class _ProjectWorkspaceState extends State<ProjectWorkspace> {
     preference = saved == null
         ? ProjectPanelLayout()
         : ProjectPanelLayout.fromJson(saved.toJson());
+    savedPreference = saved == null ? null : jsonEncode(saved.toJson());
   }
 
-  void _save() =>
-      widget.app.saveProjectPanel(widget.session.key.id, preference);
+  void _save() {
+    final value = jsonEncode(preference.toJson());
+    if (value == savedPreference) return;
+    savedPreference = value;
+    widget.app.saveProjectPanel(widget.session.key.id, preference);
+  }
+
+  Object _target(SessionInfo session) => (
+    session.key,
+    session.paneId,
+    session.origin?.machineId,
+    session.origin?.herdrSession,
+    session.origin?.targetHash,
+    session.origin?.generation,
+  );
   void _appChanged() {
     if (!mounted) return;
     if (running != wasRunning) {
@@ -84,13 +101,19 @@ class _ProjectWorkspaceState extends State<ProjectWorkspace> {
   void didUpdateWidget(covariant ProjectWorkspace oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.app != widget.app ||
-        oldWidget.session.key != widget.session.key) {
+        _target(oldWidget.session) != _target(widget.session)) {
       oldWidget.app.removeListener(_appChanged);
       oldWidget.app.setProjectPanelFocused(
         oldWidget.session.key.id,
         this,
         false,
       );
+      oldWidget.app.setProjectPanelFocused(
+        oldWidget.session.key.id,
+        coverOwner,
+        false,
+      );
+      focus.unfocus();
       widget.app.addListener(_appChanged);
       epoch++;
       timer?.cancel();
@@ -102,6 +125,10 @@ class _ProjectWorkspaceState extends State<ProjectWorkspace> {
       loading.clear();
       search.clear();
       _restore();
+      preference.scope = '';
+      preference.opened.clear();
+      preference.active = 'files';
+      _save();
       wasRunning = false;
     }
     _appChanged();
@@ -132,9 +159,18 @@ class _ProjectWorkspaceState extends State<ProjectWorkspace> {
         errors.clear();
       }
     });
-    widget.app.setProjectPanelFocused(widget.session.key.id, this, false);
+    widget.app.setProjectPanelFocused(
+      widget.session.key.id,
+      this,
+      preference.visible,
+    );
     _save();
-    if (preference.visible) unawaited(_refresh());
+    if (preference.visible) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && preference.visible) focus.requestFocus();
+      });
+      unawaited(_refresh());
+    }
   }
 
   Future<void> _refresh() async {
@@ -370,7 +406,9 @@ class _ProjectWorkspaceState extends State<ProjectWorkspace> {
     ),
     title: Text(file.name, style: const TextStyle(fontSize: 13)),
     subtitle: Text(
-      file.path == file.name ? (file.kind == 'html' ? 'HTML preview' : 'Markdown') : file.path,
+      file.path == file.name
+          ? (file.kind == 'html' ? 'HTML preview' : 'Markdown')
+          : file.path,
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
       style: TextStyle(fontSize: 10, color: context.mutedInk),
@@ -475,7 +513,9 @@ class _ProjectWorkspaceState extends State<ProjectWorkspace> {
           Padding(
             padding: const EdgeInsets.all(12),
             child: Text(
-              problem,
+              doc == null
+                  ? problem
+                  : 'Showing the last readable version. $problem',
               style: TextStyle(fontSize: 11, color: context.attention),
             ),
           ),
@@ -505,8 +545,10 @@ class _ProjectWorkspaceState extends State<ProjectWorkspace> {
     onFocusChange: (value) =>
         widget.app.setProjectPanelFocused(widget.session.key.id, this, value),
     child: Listener(
-      onPointerDown: (_) =>
-          widget.app.setProjectPanelFocused(widget.session.key.id, this, true),
+      onPointerDown: (_) {
+        focus.requestFocus();
+        widget.app.setProjectPanelFocused(widget.session.key.id, this, true);
+      },
       child: Material(
         color: context.workspace,
         child: Column(
@@ -668,13 +710,16 @@ class _ProjectWorkspaceState extends State<ProjectWorkspace> {
         coverOwner,
         visible && narrow,
       );
-      final child = Listener(
-        onPointerDown: (_) => widget.app.setProjectPanelFocused(
-          widget.session.key.id,
-          this,
-          false,
+      final child = KeyedSubtree(
+        key: sessionSlot,
+        child: Listener(
+          onPointerDown: (_) => widget.app.setProjectPanelFocused(
+            widget.session.key.id,
+            this,
+            false,
+          ),
+          child: widget.builder(_toggle, visible, visible && narrow),
         ),
-        child: widget.builder(_toggle, visible, visible && narrow),
       );
       if (!visible) return child;
       if (narrow) {

@@ -16,7 +16,7 @@ bool projectPreviewNavigationAllowed(String url) => url == 'about:blank';
 
 (int, int) projectTaskProgress(String text) {
   final matches = RegExp(
-    r'^\s*[-*+]\s+\[([ xX\-~])\]',
+    r'^[ \t]*[-*+][ \t]+\[([ xX\-~])\]',
     multiLine: true,
   ).allMatches(text).toList();
   return (
@@ -44,9 +44,13 @@ class _ProjectFileViewerState extends State<ProjectFileViewer> {
   WebViewController? web;
   bool source = false, ready = false, failed = false;
   Offset? restore;
+  (int, int) progress = (0, 0);
   @override
   void initState() {
     super.initState();
+    if (widget.file.kind != 'html') {
+      progress = projectTaskProgress(widget.document.text);
+    }
     if (widget.file.kind == 'html' && WebViewPlatform.instance != null) {
       unawaited(_start());
     }
@@ -91,6 +95,12 @@ class _ProjectFileViewerState extends State<ProjectFileViewer> {
   @override
   void didUpdateWidget(covariant ProjectFileViewer oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (widget.document.text != oldWidget.document.text ||
+        widget.file.kind != oldWidget.file.kind) {
+      progress = widget.file.kind == 'html'
+          ? (0, 0)
+          : projectTaskProgress(widget.document.text);
+    }
     if (widget.document.text != oldWidget.document.text && web != null) {
       unawaited(_reload());
     }
@@ -118,8 +128,7 @@ class _ProjectFileViewerState extends State<ProjectFileViewer> {
 
   @override
   Widget build(BuildContext context) {
-    final html = widget.file.kind == 'html',
-        progress = projectTaskProgress(widget.document.text);
+    final html = widget.file.kind == 'html';
     return Column(
       children: [
         Container(

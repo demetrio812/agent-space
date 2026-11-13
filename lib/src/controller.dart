@@ -1623,7 +1623,7 @@ class AppController extends ChangeNotifier {
     Completer<void>? receipt,
     ImageDropState? attachment,
   }) {
-    if (!canSendTerminalInput(id)) return null;
+    if (projectPanelHasFocus(id) || !canSendTerminalInput(id)) return null;
     final state = sendStates.putIfAbsent(id, SendState.new);
     final invalid = input.validationError;
     if (invalid != null) {

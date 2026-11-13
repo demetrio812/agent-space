@@ -70,6 +70,39 @@ class ProjectFileTests(unittest.TestCase):
             result=original(*args); self.api.cwd=str(self.root/'child'); return result
         self.reader._read_file=change
         with self.assertRaises(BridgeRejected): self.reader.read(self.route,{'scope':page['scope'],'file':page['files'][0]['id']})
+    def test_held_root_cannot_be_redirected_by_an_intermediate_symlink(self):
+        live=self.root/'live'; project=live/'project'; project.mkdir(parents=True); (project/'.git').mkdir()
+        (project/'README.md').write_text('original')
+        other=self.root/'other'; (other/'project').mkdir(parents=True); (other/'project'/'README.md').write_text('outside')
+        self.api.cwd=str(project); page=self.reader.listing(self.route); original=self.reader._read_file
+        saved=self.root/'saved'
+        def redirect(*args):
+            live.rename(saved); live.symlink_to(other,target_is_directory=True)
+            try: return original(*args)
+            finally: live.unlink(); saved.rename(live)
+        self.reader._read_file=redirect
+        doc=self.reader.read(self.route,{'scope':page['scope'],'file':page['files'][0]['id']})
+        self.assertEqual(doc['text'],'original')
+
+    def test_current_spec_folder_keeps_canonical_docs_in_specs_and_scratch_in_files(self):
+        self.put('.kiro/specs/invites/tasks.md','- [ ] task')
+        self.put('.kiro/specs/invites/scratch.md','scratch')
+        self.api.cwd=str(self.root/'.kiro/specs/invites')
+        page=self.reader.listing(self.route)
+        self.assertEqual({f['name']:f['section'] for f in page['files']},{'tasks.md':'specs','scratch.md':'files'})
+
+    def test_feature_budget_is_shared_across_roots_and_only_counts_directories(self):
+        for i in range(40):
+            self.put(f'.kiro/specs/root-{i}/tasks.md')
+            self.put(f'child/.kiro/specs/local-{i}/tasks.md')
+        self.api.cwd=str(self.root/'child'); page=self.reader.listing(self.route)
+        self.assertEqual(len({f['feature'] for f in page['files']}),64)
+        self.assertTrue(page['limited'])
+
+    def test_backslash_filename_does_not_poison_the_ordinary_catalog(self):
+        self.put('README.md','normal');self.put('bad\\name.md','odd name')
+        self.assertEqual([f['name'] for f in self.reader.listing(self.route)['files']],['README.md'])
+
     def test_catalog_is_bounded_and_does_not_read_file_contents(self):
         for i in range(140): self.put(f'{i:03}.md',str(i))
         page=self.reader.listing(self.route)
