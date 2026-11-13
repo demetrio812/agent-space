@@ -12,6 +12,7 @@ from bridge.gateway import Machine, MachineRegistry, PeerPool, GatewayWorker, ss
 from bridge.image_transfers import ImageTransfers
 from bridge.conversation import ConversationReader
 from bridge.project_files import ProjectFiles
+from bridge.file_browser import FileBrowser
 from bridge.local_api import LocalApi
 from bridge.session_actions import SessionActions
 from bridge.protocol import BridgeRejected
@@ -25,8 +26,9 @@ class ApiPeer:
         self.closed = threading.Event(); self.busy = False
         self.hello = {'generation':self.api.generation(),'capabilities':{'input':True,'observe':True,'viewport':True}}
         self.connector=connector
-        self.images=ImageTransfers(self.api,herdr.root/'images')
+        self.images=ImageTransfers(self.api,herdr.root/'images');self.files=FileBrowser(self.api)
     def request(self, row, on_event=None, timeout=6):
+        if row['op'].startswith('fs.'):return self.files.operation(row['op'],row['route'],row['payload'])
         if row['op']=='files.list': return ProjectFiles(self.api).listing(row['route'])
         if row['op']=='files.read': return ProjectFiles(self.api).read(row['route'],row['payload'])
         if row['op']=='chat.read':
@@ -44,7 +46,7 @@ class ApiPeer:
         raise AssertionError('Unexpected peer operation: '+row['op'])
     def close(self):
         if not self.closed.is_set(): self.connector.retired.append(self.machine.id)
-        self.closed.set(); self.images.close()
+        self.closed.set(); self.images.close();self.files.close()
 
 
 class ApiConnector:
@@ -121,6 +123,21 @@ class GatewayTests(unittest.TestCase):
         result=worker.operation({'op':'files.read','route':route,'payload':{'scope':page['scope'],'file':page['files'][0]['id']}})
         self.assertEqual(result['text'],'Beta')
         self.assertFalse(self.herdrs[a.id].calls)
+        self.assertFalse(any(c['method'].startswith('pane.send') for c in self.herdrs[b.id].calls))
+
+    def test_file_browser_upload_stays_on_selected_peer_and_never_sends_input(self):
+        import base64,hashlib
+        a=self.machine(1);b=self.machine(2);worker=self.management_worker();route=self.route(b)
+        for node in (a,b):self.herdrs[node.id].agents[0]['foreground_cwd']=str(self.herdrs[node.id].root)
+        page=worker.operation({'op':'fs.list','route':route,'payload':{'path':''}})
+        data=b'peer binary\x00'
+        payload={'path':page['path'],'scope':page['scope'],'name':'uploaded.bin','size':len(data),'sha256':hashlib.sha256(data).hexdigest()}
+        token=worker.operation({'op':'fs.begin','route':route,'payload':payload})['token']
+        with self.assertRaises(BridgeRejected):worker.operation({'op':'fs.cancel','route':self.route(a),'payload':{'token':token}})
+        worker.operation({'op':'fs.chunk','route':route,'payload':{'token':token,'offset':0,'bytes':base64.b64encode(data).decode()}})
+        result=worker.operation({'op':'fs.finish','route':route,'payload':{'token':token}})
+        self.assertTrue(result['uploaded']);self.assertEqual((self.herdrs[b.id].root/'uploaded.bin').read_bytes(),data)
+        self.assertFalse((self.herdrs[a.id].root/'uploaded.bin').exists());self.assertFalse(self.herdrs[a.id].calls)
         self.assertFalse(any(c['method'].startswith('pane.send') for c in self.herdrs[b.id].calls))
 
     def test_management_routes_colliding_ids_only_to_captured_peer(self):

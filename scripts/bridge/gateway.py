@@ -20,6 +20,8 @@ import time
 import zipfile
 
 try:
+    from .file_browser import validate_payload as validate_browser
+    from .peer_file_transfers import PeerFileTransfers
     from .project_files import validate_payload as validate_files
     from .conversation import validate_payload as validate_chat
     from .image_transfers import validate_image_payload
@@ -29,6 +31,8 @@ try:
     from .protocol import PROTOCOL, BridgeRejected, DeliveryUncertain, read_record, write_record
     from .gate_rules import gate
 except ImportError:
+    from file_browser import validate_payload as validate_browser
+    from peer_file_transfers import PeerFileTransfers
     from project_files import validate_payload as validate_files
     from conversation import validate_payload as validate_chat
     from image_transfers import validate_image_payload
@@ -363,6 +367,7 @@ class GatewayWorker(LocalWorker):
             connector=PeerConnector(package,bootstrap,allow_input=config.get('allowInput',True),allow_management=config.get('allowManagement',False),allow_images=config.get('allowImages',False))
         self.pool=PeerPool(connector); self.priority=set(); self._catalog_epoch=-1
         self._peer_streams={}
+        self.file_transfers=PeerFileTransfers(self)
         self._transfers={}; self._image_starts=0; self._transfer_lock=threading.RLock()
         threading.Thread(target=self._reap_peer_images,daemon=True).start()
 
@@ -465,6 +470,7 @@ class GatewayWorker(LocalWorker):
         while not self.closed.wait(30):
             with self._transfer_lock:expired=[token for token,item in self._transfers.items() if time.monotonic()-item[4]>=300]
             for token in expired:self._release_image(token)
+            self.file_transfers.reap()
 
     def image_operation(self,op,route,payload):
         if not self.config.get('allowImages',False) or not self.config.get('allowInput',True):raise BridgeRejected('unsupported')
@@ -518,6 +524,17 @@ class GatewayWorker(LocalWorker):
 
     def operation(self,row):
         op=row['op']; route=row.get('route')
+        if op.startswith('fs.'):
+            validate_browser(op,row['payload']);validate_management_route('rename',route)
+            if op not in ('fs.list','fs.read') and not self.config.get('allowInput',True):raise BridgeRejected('unsupported')
+            if route['machine']=='gateway':return super().operation(row)
+            if op not in ('fs.list','fs.read'):return self.file_transfers.operation(op,route,row['payload'])
+            machine=self.registry.require(route)
+            with self.pool.lease(machine,'discovery',self.priority|{machine.id}) as worker:
+                self.registry.require(route)
+                if self.closed.is_set():raise BridgeRejected('offline')
+                result=worker.request({'op':op,'route':route,'payload':row['payload']},timeout=30)
+                self.registry.require(route);return result
         if op in ('files.list','files.read'):
             validate_files(op,row['payload']); validate_management_route('rename',route)
             if route['machine']=='gateway': return super().operation(row)
@@ -601,4 +618,5 @@ class GatewayWorker(LocalWorker):
         if hasattr(self,'_transfer_lock'):
             with self._transfer_lock:tokens=list(self._transfers)
             for token in tokens:self._release_image(token)
+        if hasattr(self,'file_transfers'):self.file_transfers.close()
         if hasattr(self,'pool'): self.pool.close()

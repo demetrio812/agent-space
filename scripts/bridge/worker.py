@@ -14,6 +14,7 @@ import time
 try:
     from .protocol import PROTOCOL, BridgeRejected, DeliveryUncertain, validate_request, read_record, write_record
     from .image_transfers import ImageTransfers
+    from .file_browser import FileBrowser, validate_payload as validate_browser
     from .project_files import ProjectFiles, validate_payload as validate_files
     from .conversation import ConversationReader, validate_payload as validate_chat
     from .git_metadata import GitMetadata
@@ -23,6 +24,7 @@ try:
 except ImportError:
     from protocol import PROTOCOL, BridgeRejected, DeliveryUncertain, validate_request, read_record, write_record
     from image_transfers import ImageTransfers
+    from file_browser import FileBrowser, validate_payload as validate_browser
     from project_files import ProjectFiles, validate_payload as validate_files
     from conversation import ConversationReader, validate_payload as validate_chat
     from git_metadata import GitMetadata
@@ -67,6 +69,7 @@ class LocalWorker:
         self.git_metadata = GitMetadata(self.closed)
         self.conversation = ConversationReader(self.api)
         self.project_files = ProjectFiles(self.api)
+        self.file_browser = FileBrowser(self.api)
         self._writer.start()
         threading.Thread(target=self._reap_images,daemon=True).start()
 
@@ -74,6 +77,7 @@ class LocalWorker:
         while not self.closed.wait(30):
             try:
                 if self.images: self.images.reap()
+                self.file_browser.reap()
             except OSError: pass
 
     def image_enabled(self):
@@ -190,6 +194,11 @@ class LocalWorker:
     def operation(self, row):
         op, payload = row['op'], row['payload']
         if op == 'health': return {'alive':True}
+        if op.startswith('fs.'):
+            validate_browser(op,payload)
+            route=validate_management_route('rename',row.get('route'));check_worker_origin(self.config,route)
+            if op not in ('fs.list','fs.read') and not self.config.get('allowInput',True):raise BridgeRejected('unsupported')
+            return self.file_browser.operation(op,route,payload)
         if op in ('files.list','files.read'):
             validate_files(op,payload)
             route=validate_management_route('rename',row.get('route')); check_worker_origin(self.config,route)
@@ -353,6 +362,7 @@ class LocalWorker:
         with self.lock:
             self.closed.set();
             if self.images: self.images.close()
+            self.file_browser.close()
             entries=list(self.streams.values()); self.streams.clear()
         # Stop in parallel so closing sixteen views remains bounded.
         closers=[threading.Thread(target=stop_process,args=(e['process'],),daemon=True) for e in entries]
