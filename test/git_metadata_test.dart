@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/services.dart';
 import 'package:agentspace/src/git_metadata.dart';
 import 'package:agentspace/src/git_metadata_view.dart';
 import 'package:agentspace/src/models.dart';
@@ -8,6 +9,78 @@ import 'package:agentspace/src/app.dart';
 import 'app_widget_test.dart' show createApp, closeApp;
 
 void main() {
+  test(
+    'repository URLs survive storage and reject credentials and non-web links',
+    () {
+      final git = GitMetadata.fromJson({
+        'repoUrl': 'https://gitlab.example/team/subgroup/repo',
+      });
+      expect(git.repoUrl, 'https://gitlab.example/team/subgroup/repo');
+      expect(GitMetadata.fromJson(git.toJson()).repoUrl, git.repoUrl);
+      for (final url in [
+        'javascript:evil',
+        'file:///repo',
+        'https://a:b@github.com/a/b',
+        'https://github.com/a/b?token=secret',
+        'https://github.com/a/../b',
+      ]) {
+        expect(GitMetadata.fromJson({'repoUrl': url}).repoUrl, isEmpty);
+      }
+    },
+  );
+  testWidgets(
+    'repository button opens the validated repository in the browser',
+    (tester) async {
+      final urls = <String>[];
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+            const MethodChannel('plugins.flutter.io/url_launcher'),
+            (call) async {
+              if (call.arguments is Map &&
+                  (call.arguments as Map)['url'] is String) {
+                urls.add((call.arguments as Map)['url'] as String);
+              }
+              return true;
+            },
+          );
+      try {
+        await tester.pumpWidget(
+          const MaterialApp(
+            home: Scaffold(
+              body: Row(
+                children: [
+                  OpenRepositoryButton(
+                    metadata: GitMetadata(
+                      repoUrl: 'https://github.com/example/project',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+        await tester.tap(find.byTooltip('Open repository'));
+        await tester.pump();
+        expect(urls, ['https://github.com/example/project']);
+        await tester.pumpWidget(
+          const MaterialApp(
+            home: Scaffold(
+              body: OpenRepositoryButton(
+                metadata: GitMetadata(repoUrl: 'file:///private/repo'),
+              ),
+            ),
+          ),
+        );
+        expect(find.byTooltip('Open repository'), findsNothing);
+      } finally {
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(
+              const MethodChannel('plugins.flutter.io/url_launcher'),
+              null,
+            );
+      }
+    },
+  );
   test('PR links are validated and metadata survives saved sessions', () {
     final git = GitMetadata.fromJson({
       'branch': 'feature/one',
@@ -56,6 +129,7 @@ void main() {
         );
         await tester.pumpAndSettle();
         expect(find.byType(GitMetadataView), findsWidgets);
+        expect(find.byTooltip('Open repository'), findsOneWidget);
         expect(find.text('feature/navigation'), findsWidgets);
         expect(find.text('#42 · open'), findsWidgets);
         final git = tester.getRect(find.byType(GitMetadataView).first);

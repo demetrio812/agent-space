@@ -482,6 +482,8 @@ class _TerminalPaneState extends State<TerminalPane> {
                                       ? context.accent
                                       : context.mutedInk,
                                 ),
+                              if (session.git.repoUrl.isNotEmpty)
+                                OpenRepositoryButton(metadata: session.git),
                               if (!compact && !chatOpen) ...[
                                 CompactIcon(
                                   Icons.text_decrease,

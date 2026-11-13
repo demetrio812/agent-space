@@ -66,6 +66,33 @@ def run(args,cwd,timeout=4):
         process.wait();process.stdout.close()
 
 
+def repository_web_url(remote):
+    remote=clean(remote,2048)
+    match=re.fullmatch(r'(?:[A-Za-z0-9_.-]+@)?([A-Za-z0-9.-]+):(.+)',remote) if '://' not in remote else None
+    if match:host,path=match.groups();scheme='https';port=None;ssh=True
+    else:
+        try:
+            url=urlsplit(remote)
+            if url.scheme not in ('https','http','ssh') or url.query or url.fragment:return ''
+            host,path=url.hostname or '',url.path.lstrip('/')
+            scheme='https' if url.scheme=='ssh' else url.scheme
+            port=url.port if url.scheme in ('https','http') else None
+            ssh=url.scheme=='ssh'
+        except ValueError:return ''
+    path=path.strip('/').removesuffix('.git')
+    parts=path.split('/')
+    if (not re.fullmatch(r'[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?',host)
+            or len(parts)<2 or any(p in ('.','..') or not re.fullmatch(r'[A-Za-z0-9_.~-]+',p) for p in parts)):return ''
+    if host.lower()=='ssh.github.com':
+        if not ssh or len(parts)!=2:return ''
+        host='github.com'
+    elif host.lower()=='ssh.dev.azure.com':
+        if not ssh or len(parts)!=4 or parts[0]!='v3':return ''
+        host='dev.azure.com';path='/'.join([parts[1],parts[2],'_git',parts[3]])
+    authority=host.lower()+((':'+str(port)) if port is not None else '')
+    return scheme+'://'+authority+'/'+path
+
+
 def repository(remote):
     # gh receives an explicit repository: never infer one from the gateway cwd.
     remote=clean(remote,2048)
@@ -117,7 +144,7 @@ class GitMetadata:
                                 threading.Thread(target=self._loop,daemon=True).start()
             # Once Git has identified the branch, don't combine it with a token
             # explicitly describing a different branch.
-            if value and reported.get('branch') and reported['branch']!=value.get('branch'): reported={}
+            if value.get('branch') and reported.get('branch') and reported['branch']!=value['branch']: reported={}
             row['gitMetadata']={**reported,**value}
         return catalog
 
@@ -133,13 +160,15 @@ class GitMetadata:
 
     def resolve(self,cwd):
         branch=clean(self.run(['git','-c','core.fsmonitor=false','rev-parse','--abbrev-ref','HEAD'],cwd))
-        if not branch:return {}
+        result={'branch':branch} if branch else {}
         if branch=='HEAD':
             sha=clean(self.run(['git','rev-parse','--short','HEAD'],cwd))
-            return {'branch':('Detached '+sha) if sha else 'Detached HEAD'}
-        result={'branch':branch}
-        repo=repository(self.run(['git','remote','get-url','origin'],cwd))
-        if not repo:return result
+            result={'branch':('Detached '+sha) if sha else 'Detached HEAD'}
+        remote=self.run(['git','remote','get-url','origin'],cwd)
+        web=repository_web_url(remote)
+        if web:result['repoUrl']=web
+        repo=repository(web) if web else repository(remote)
+        if not repo or not branch or branch=='HEAD':return result
         key=(repo,branch);now=time.monotonic();cached=self.pr_cache.get(key)
         if not cached or now-cached[0]>=60:
             pr={}

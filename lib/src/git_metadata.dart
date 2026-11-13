@@ -4,8 +4,9 @@ class GitMetadata {
     this.prNumber = 0,
     this.prState = '',
     this.prUrl = '',
+    this.repoUrl = '',
   });
-  final String branch, prState, prUrl;
+  final String branch, prState, prUrl, repoUrl;
   final int prNumber;
   bool get isEmpty => branch.isEmpty && prNumber == 0;
   static String text(Object? value, int max) =>
@@ -29,6 +30,25 @@ class GitMetadata {
     return uri;
   }
 
+  static Uri? repositoryUri(String value) {
+    if (text(value, 2048).isEmpty ||
+        RegExp(r'/(?:\.|\.\.)(?:/|$)').hasMatch(value)) {
+      return null;
+    }
+    final uri = Uri.tryParse(value);
+    if (uri == null ||
+        !{'http', 'https'}.contains(uri.scheme) ||
+        uri.host.isEmpty ||
+        uri.userInfo.isNotEmpty ||
+        uri.hasQuery ||
+        uri.hasFragment ||
+        !RegExp(r'^/[A-Za-z0-9_.~-]+(?:/[A-Za-z0-9_.~-]+)+/?$')
+            .hasMatch(uri.path)) {
+      return null;
+    }
+    return uri;
+  }
+
   factory GitMetadata.fromJson(Object? value) {
     if (value is! Map) return const GitMetadata();
     final number = value['prNumber'];
@@ -37,6 +57,9 @@ class GitMetadata {
         uri = pullRequestUri(text(value['prUrl'], 2048));
     return GitMetadata(
       branch: text(value['branch'], 256),
+      repoUrl: repositoryUri(text(value['repoUrl'], 2048)) != null
+          ? value['repoUrl'] as String
+          : '',
       prNumber: n,
       prState:
           const {'OPEN', 'DRAFT', 'MERGED', 'CLOSED'}.contains(value['prState'])
@@ -47,6 +70,7 @@ class GitMetadata {
   }
   Map<String, dynamic> toJson() => {
     'branch': branch,
+    'repoUrl': repoUrl,
     'prNumber': prNumber,
     'prState': prState,
     'prUrl': prUrl,

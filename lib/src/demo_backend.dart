@@ -178,6 +178,7 @@ class DemoBackend
                   ['Studio', 'Library', 'AgentSpace'][i ~/ 4],
               terminalTitle: '${_agents[i % 3]} · ${_names[i]}',
               git: GitMetadata(
+                repoUrl: 'https://github.com/example/orbit',
                 branch: i % 2 == 0 ? 'feature/navigation' : 'main',
                 prNumber: i % 2 == 0 ? 42 : 0,
                 prState: i % 2 == 0 ? 'OPEN' : '',

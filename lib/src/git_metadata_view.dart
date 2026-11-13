@@ -85,3 +85,24 @@ class GitMetadataView extends StatelessWidget {
     );
   }
 }
+
+class OpenRepositoryButton extends StatelessWidget {
+  const OpenRepositoryButton({super.key, required this.metadata});
+  final GitMetadata metadata;
+  @override
+  Widget build(BuildContext context) {
+    final uri = GitMetadata.repositoryUri(metadata.repoUrl);
+    if (uri == null) return const SizedBox.shrink();
+    return CompactIcon(Icons.open_in_new, 'Open repository', () async {
+      bool opened = false;
+      try {
+        opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } catch (_) {}
+      if (!opened && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open the repository.')),
+        );
+      }
+    }, key: const ValueKey('open-session-repository'));
+  }
+}
