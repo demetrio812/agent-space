@@ -44,9 +44,9 @@
 
 - [x] One independent final review; resolve important findings with red/green regressions in one pass.
 - [x] Run final host/Swift/Flutter verification, mirror intentional sources preserving private signing, build/sign release 44.
-- [ ] Install/launch Mac and iPhone, verify versions; native checks only Demo/disposable input.
+- [x] Install/launch Mac and iPhone, verify versions; native checks only Demo/disposable input.
 - [x] Commit private mirror, push public feature branch and report exact outcomes and limits.
 
 ## Release 44 verification
 
-Final Flutter suite: 412 passed, 38 skipped; analysis clean. Python:155 tests, one skipped. Swift:26 passed. The independent final review’s nine finding categories were fixed in one regression-tested pass. Mac and iOS release44 builds succeeded, and the installed Mac app signature and bundled bridge digests match the reviewed source. Mac installation succeeded; launch and the native walkthrough are blocked by the Mac lock screen. Xcode still reports the iPhone unavailable, so its build is prepared but not installed. User was asked to unlock/reconnect; iPad is explicitly deferred. Code is committed and pushed on codex/session-project-panel; main remains885864a.
+Final Flutter suite: 412 passed, 38 skipped; analysis clean. Python:155 tests, one skipped. Swift:26 passed. The independent final review’s nine finding categories were fixed in one regression-tested pass. Mac and iOS release44 builds succeeded, and the installed Mac app signature and bundled bridge digests match the reviewed source. Mac and iPhone build44 are installed and launched; the installed iPhone bundle version was queried and confirmed. Native Mac checks confirmed Documents, Kiro Specs, the Files starting folder, browsing outside the project and Markdown preview through the selected peer computer. The original folder and Documents tab were restored. No live-agent input or uploads were sent; upload behavior was covered by the synthetic regression suites. iPad is explicitly deferred. Code is committed and pushed on codex/session-project-panel; main remains885864a.
