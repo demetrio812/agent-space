@@ -176,7 +176,8 @@ class ProjectPanelLayout {
       scope: _hash(value['scope']) ? value['scope'] : '',
       opened: opened,
       active:
-          const ['files', 'specs'].contains(active) || opened.contains(active)
+          const ['files', 'specs', 'browser'].contains(active) ||
+              opened.contains(active)
           ? active
           : 'files',
     );

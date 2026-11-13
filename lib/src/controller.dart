@@ -1,3 +1,4 @@
+import 'file_browser.dart';
 import 'project_files.dart';
 import 'dictation_shortcut.dart';
 
@@ -1349,6 +1350,33 @@ class AppController extends ChangeNotifier {
         _projectPanelFocus.remove(id);
       }
     }
+  }
+
+  bool get supportsFileBrowser => _backend is FileBrowserBackend;
+  BrowserRequest fileBrowserExecutor(SessionInfo target) {
+    final backend = _backend, generation = _generation;
+    return (op, payload) async {
+      validateBrowserPayload(op, payload);
+      // Cancellation may finish after navigation/background; it only destroys
+      // a route-owned partial upload in the captured backend.
+      if (backend is! FileBrowserBackend ||
+          (op != 'fs.cancel' &&
+              (!identical(backend, _backend) ||
+                  !dictationTargetIsCurrent(target, generation)))) {
+        throw SessionUnavailable();
+      }
+      final result = await (backend as FileBrowserBackend).fileBrowserRequest(
+        target,
+        op,
+        payload,
+      );
+      if (op != 'fs.cancel' &&
+          (!identical(backend, _backend) ||
+              !dictationTargetIsCurrent(target, generation))) {
+        throw SessionUnavailable();
+      }
+      return result;
+    };
   }
 
   bool get supportsProjectFiles => _backend is ProjectFilesBackend;

@@ -1,3 +1,4 @@
+import 'file_browser.dart';
 import 'project_files.dart';
 
 import 'dart:async';
@@ -213,6 +214,10 @@ class PersistentBridge {
   }) async {
     final allowed = switch (kind) {
       BridgeLane.transfer => const {
+        'fs.begin',
+        'fs.chunk',
+        'fs.finish',
+        'fs.cancel',
         'image.begin',
         'image.chunk',
         'image.finish',
@@ -220,6 +225,8 @@ class PersistentBridge {
         'health',
       },
       BridgeLane.discovery => const {
+        'fs.list',
+        'fs.read',
         'catalog',
         'machines',
         'chat.read',
@@ -250,6 +257,10 @@ class PersistentBridge {
     };
     if (!allowed.contains(op)) {
       throw ArgumentError('Unsupported connection action.');
+    }
+    if (op.startsWith('fs.')) {
+      validateBrowserPayload(op, payload);
+      validateSessionActionRoute('rename', route);
     }
     if (op.startsWith('files.')) {
       validateProjectPayload(op, payload);

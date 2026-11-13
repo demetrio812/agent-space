@@ -1,3 +1,5 @@
+import 'session_file_browser.dart';
+
 import 'dart:async';
 import 'dart:convert';
 
@@ -42,6 +44,7 @@ class _ProjectWorkspaceState extends State<ProjectWorkspace> {
   final focus = FocusNode();
   final coverOwner = Object();
   final sessionSlot = GlobalKey();
+  final tabKeys = <String, GlobalKey>{};
   String? savedPreference;
   bool get running =>
       widget.active &&
@@ -194,7 +197,7 @@ class _ProjectWorkspaceState extends State<ProjectWorkspace> {
         preference.opened.removeWhere((id) => result.file(id) == null);
         documents.removeWhere((id, _) => !preference.opened.contains(id));
         errors.removeWhere((id, _) => !preference.opened.contains(id));
-        if (!const ['files', 'specs'].contains(preference.active) &&
+        if (!const ['files', 'specs', 'browser'].contains(preference.active) &&
             !preference.opened.contains(preference.active)) {
           preference.active = 'files';
         }
@@ -280,6 +283,16 @@ class _ProjectWorkspaceState extends State<ProjectWorkspace> {
       search.clear();
     });
     _save();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final target = tabKeys[id]?.currentContext;
+      if (mounted && target != null) {
+        Scrollable.ensureVisible(
+          target,
+          alignment: 1,
+          alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
+        );
+      }
+    });
     final file = manifest?.file(id);
     if (file != null && documents[id]?.revision != file.revision) {
       unawaited(_load(file));
@@ -344,6 +357,7 @@ class _ProjectWorkspaceState extends State<ProjectWorkspace> {
   Widget _tab(String id, String title, IconData icon, {ProjectFile? file}) {
     final selected = preference.active == id;
     return Container(
+      key: tabKeys.putIfAbsent(id, () => GlobalKey()),
       decoration: BoxDecoration(
         color: selected ? context.tabs : null,
         border: Border(
@@ -440,7 +454,7 @@ class _ProjectWorkspaceState extends State<ProjectWorkspace> {
             onChanged: (_) => setState(() {}),
             decoration: InputDecoration(
               isDense: true,
-              hintText: specs ? 'Find a spec…' : 'Find a file…',
+              hintText: specs ? 'Find a spec…' : 'Find a document…',
               prefixIcon: const Icon(Icons.search, size: 18),
               contentPadding: const EdgeInsets.all(12),
             ),
@@ -607,37 +621,47 @@ class _ProjectWorkspaceState extends State<ProjectWorkspace> {
               decoration: BoxDecoration(
                 border: Border(bottom: BorderSide(color: context.border)),
               ),
-              child: Row(
-                children: [
-                  _tab('files', 'Files', Icons.folder_outlined),
-                  _tab('specs', 'Specs', Icons.checklist),
-                  Expanded(
-                    child: SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        children: preference.opened
-                            .map((id) => manifest?.file(id))
-                            .whereType<ProjectFile>()
-                            .map(
-                              (f) => _tab(
-                                f.id,
-                                f.name,
-                                f.kind == 'html'
-                                    ? Icons.code
-                                    : Icons.description_outlined,
-                                file: f,
-                              ),
-                            )
-                            .toList(),
-                      ),
-                    ),
-                  ),
-                ],
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    _tab('files', 'Documents', Icons.description_outlined),
+                    _tab('specs', 'Specs', Icons.checklist),
+                    _tab('browser', 'Files', Icons.folder_outlined),
+                    ...preference.opened
+                        .map((id) => manifest?.file(id))
+                        .whereType<ProjectFile>()
+                        .map(
+                          (f) => _tab(
+                            f.id,
+                            f.name,
+                            f.kind == 'html'
+                                ? Icons.code
+                                : Icons.description_outlined,
+                            file: f,
+                          ),
+                        ),
+                  ],
+                ),
               ),
             ),
             Expanded(
               child: Stack(
                 children: [
+                  Offstage(
+                    offstage: preference.active != 'browser',
+                    child: SessionFileBrowser(
+                      key: ValueKey(
+                        'browser-${widget.session.key.id}-${manifest?.scope}',
+                      ),
+                      app: widget.app,
+                      session: widget.session,
+                      active:
+                          running &&
+                          preference.visible &&
+                          preference.active == 'browser',
+                    ),
+                  ),
                   Offstage(
                     offstage: !const [
                       'files',
@@ -673,6 +697,8 @@ class _ProjectWorkspaceState extends State<ProjectWorkspace> {
                               ? 'Some files were omitted by the preview limits.'
                               : busy
                               ? 'Refreshing…'
+                              : preference.active == 'browser'
+                              ? 'Files on the session’s computer'
                               : 'Read only'),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,

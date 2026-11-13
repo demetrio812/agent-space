@@ -73,9 +73,11 @@ macOS shortcuts: ⌘1 Favourites, ⌘0 all sessions, ⌘F search, Esc overview, 
 
 Use the folder icon in an open session to show **Project files**. The panel opens automatically the first time supported documents are found, and remembers an explicit close. Wide windows show it beside the session with a resizable divider; narrow windows show an overlay with **Back to session**.
 
-- **Files** lists Markdown and HTML documents from the session's current folder, project root and bounded `docs/` subtree.
+- **Documents** lists Markdown and HTML documents from the session's current folder, project root and bounded `docs/` subtree.
 - **Specs** groups Kiro documents from `.kiro/specs/<feature>/` and `.specs/<feature>/`.
 - Click a document to open a closable tab. Opening it again reuses its tab. The two list tabs stay visible; up to eight documents can be open.
+- **Files** browses the selected computer, starting in the session's folder. Use breadcrumbs, Parent folder or the location menu to browse elsewhere with your account's permissions. Hidden files can be shown. Markdown and HTML files have previews; other files show metadata.
+- In **Files**, use **Upload files** (including the iPhone file picker), or drop Finder files into the browser, to save up to 20 files sequentially into the displayed folder, up to 32 MiB each. Existing filenames are kept; rename your local file before retrying a collision. Uploading does not send a prompt or attach it to the agent. Cancellation removes partial uploads. If completion is uncertain, refresh the destination before retrying. Demo transfers stay in memory and save no files.
 - Markdown supports selection, code blocks and task progress. Task checkboxes are read-only. Discovered relative document links open a tab; explicit web links open externally. Markdown images are labels in this first version.
 - HTML uses the system WebView for a read-only preview. Scripts, navigation, forms and external resources are disabled; inline CSS and embedded data images/fonts are supported. **Source** shows the original text.
 

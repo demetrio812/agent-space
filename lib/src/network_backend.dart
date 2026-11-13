@@ -1,3 +1,4 @@
+import 'file_browser.dart';
 import 'project_files.dart';
 
 import 'dart:convert';
@@ -36,7 +37,8 @@ class NetworkHerdrBackend
         SessionManagementBackend,
         ImageAttachmentBackend,
         ConversationBackend,
-        ProjectFilesBackend {
+        ProjectFilesBackend,
+        FileBrowserBackend {
   NetworkHerdrBackend(this.profile, PersistentBridge bridge, {this.onClose})
     : _provider = (() async => bridge),
       _legacy = null;
@@ -485,6 +487,28 @@ class NetworkHerdrBackend
     } catch (_) {
       throw const SessionActionUncertain();
     }
+  }
+
+  @override
+  Future<Map<String, dynamic>> fileBrowserRequest(
+    SessionInfo session,
+    String op,
+    Map<String, dynamic> payload,
+  ) async {
+    validateBrowserPayload(op, payload);
+    final current = _current(session), bridge = _bridge;
+    if (bridge == null || current.origin == null) throw SessionUnavailable();
+    final result = await bridge.request(
+      {'fs.list', 'fs.read'}.contains(op)
+          ? BridgeLane.discovery
+          : BridgeLane.transfer,
+      op,
+      payload,
+      route: current.origin!.route(current.key.terminal, current.paneId),
+      timeout: const Duration(seconds: 30),
+    );
+    if (op != 'fs.cancel') _current(session);
+    return result;
   }
 
   @override

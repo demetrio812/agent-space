@@ -162,6 +162,8 @@ Object bridgeRejection(Map<String, dynamic> error, {required bool input}) {
     'invalid_request',
     'unsupported',
     'file_unavailable',
+    'file_permission',
+    'file_exists',
     'file_too_large',
     'file_encoding',
     'file_changed',
@@ -185,6 +187,12 @@ Object bridgeRejection(Map<String, dynamic> error, {required bool input}) {
   }
   if (input && error['dispatched'] == true) return DeliveryUncertain();
   return switch (error['code']) {
+    'file_permission' => SessionUnavailable(
+      'Your account does not have permission for this folder or file.',
+    ),
+    'file_exists' => SessionUnavailable(
+      'A file with this name already exists. Rename the local file before uploading.',
+    ),
     'file_unavailable' => SessionUnavailable(
       'This document or folder is unavailable. Refresh the file list.',
     ),
