@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/services.dart';
@@ -91,6 +90,55 @@ class PanelCountingStore extends WidgetStore {
 }
 
 void main() {
+  for (final entry in [(readmeId, 'README.md'), (htmlId, 'preview.html')]) {
+    testWidgets('open ${entry.$2} preview downloads original source bytes', (
+      tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(1200, 800));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final backend = ProjectDownloadFixture();
+      final app = AppController(
+        snapshot: AppSnapshot(),
+        store: WidgetStore(),
+        backendFactory: (_) => backend,
+      );
+      final exports = <String>[];
+      try {
+        await app.start(polling: false);
+        app.select(backend.session.key.id);
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: ProjectWorkspace(
+                app: app,
+                session: backend.session,
+                active: true,
+                saveFile: (_, name, bytes) async {
+                  exports.add(name);
+                  expect(bytes, [239, 187, 191, 35, 32, 65, 13, 10]);
+                  return true;
+                },
+                builder: (_, _, _) => const Text('Terminal'),
+              ),
+            ),
+          ),
+        );
+        await tester.pump(const Duration(milliseconds: 300));
+        await tester.tap(find.byKey(ValueKey('project-file-${entry.$1}')));
+        await tester.pump();
+        expect(find.byType(ProjectFileViewer), findsOneWidget);
+        await tester.tap(find.widgetWithText(TextButton, 'Download'));
+        await tester.pump();
+        expect(exports, [entry.$2]);
+        expect(backend.downloads, 1);
+        expect(backend.input, isEmpty);
+      } finally {
+        await tester.pumpWidget(const SizedBox());
+        await tester.runAsync(app.shutdown);
+      }
+    });
+  }
+
   testWidgets(
     'Documents download exports source bytes without opening a tab or sending input',
     (tester) async {

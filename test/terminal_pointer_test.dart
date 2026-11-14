@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:xterm/xterm.dart';
@@ -15,6 +16,61 @@ import 'package:agentspace/src/storage.dart';
 import 'terminal_input_test.dart' show InputFixture, WidgetStore;
 
 void main() {
+  for (final kind in [PointerDeviceKind.mouse, PointerDeviceKind.touch]) {
+    for (final drag in [false, true]) {
+      testWidgets('held $kind click at terminal close cell, drag: $drag', (
+        tester,
+      ) async {
+        await tester.binding.setSurfaceSize(const Size(2000, 1200));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        final terminal = Terminal()
+          ..resize(126, 50)
+          ..write('\x1b[1;125H×');
+        final inputs = <TerminalInput>[];
+        await tester.pumpWidget(
+          MaterialApp(
+            home: TerminalSurface(
+              terminal: terminal,
+              controller: TerminalController(),
+              zoom: 1,
+              copy: () async {},
+              inputId: 'held-pointer',
+              onViewport: (_, _) {},
+              onScroll: (_) async {},
+              sendInput: inputs.add,
+              forwardMouseClicks: true,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final render = tester
+            .state<TerminalViewState>(find.byType(TerminalView))
+            .renderTerminal;
+        final local =
+            render.getOffset(const CellOffset(124, 0)) +
+            render.cellSize.center(Offset.zero);
+        expect((Offset.zero & render.size).contains(local), isTrue);
+        final point = render.localToGlobal(local);
+        final gesture = await tester.startGesture(point, kind: kind);
+        await tester.pump(const Duration(milliseconds: 800));
+        if (drag) {
+          await gesture.moveBy(
+            const Offset(-50, 0),
+            timeStamp: const Duration(milliseconds: 800),
+          );
+        }
+        await gesture.up(timeStamp: const Duration(milliseconds: 800));
+        await tester.pump(const Duration(milliseconds: 350));
+        if (kind == PointerDeviceKind.mouse && !drag) {
+          expect(inputs.single.clickCell, (column: 124, row: 0));
+        } else {
+          expect(inputs, isEmpty);
+        }
+        await tester.pumpWidget(const SizedBox());
+      });
+    }
+  }
+
   testWidgets(
     'plain terminal tap forwards the visible cell without typing text',
     (tester) async {

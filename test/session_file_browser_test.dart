@@ -33,6 +33,25 @@ class BrowserFixture extends ProjectFixture implements FileBrowserBackend {
       if (held != null) return held!.future;
       return browserPage(p['path'] == '' ? '/project' : p['path'] as String);
     }
+    if (op == 'fs.read') {
+      return {
+        'file': {
+          'id': 'b' * 64,
+          'name': p['name'],
+          'path': p['name'],
+          'kind': 'markdown',
+          'section': 'files',
+          'feature': '',
+          'revision': p['revision'],
+        },
+        'document': {
+          'scope': p['scope'],
+          'file': 'b' * 64,
+          'revision': p['revision'],
+          'text': '# Preview content',
+        },
+      };
+    }
     if (op == 'fs.download') {
       return {
         'offset': 0,
@@ -94,6 +113,50 @@ class UploadRaceFixture extends BrowserFixture {
 }
 
 void main() {
+  testWidgets('Files single-document preview exposes working Download action', (
+    tester,
+  ) async {
+    final backend = BrowserFixture();
+    final app = AppController(
+      snapshot: AppSnapshot(),
+      store: WidgetStore(),
+      backendFactory: (_) => backend,
+    );
+    final exports = <String>[];
+    try {
+      await app.start(polling: false);
+      app.select(backend.session.key.id);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SessionFileBrowser(
+              app: app,
+              session: backend.session,
+              active: true,
+              saveFile: (_, name, bytes) async {
+                exports.add(name);
+                expect(String.fromCharCodes(bytes), 'hello world!');
+                return true;
+              },
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('browser-entry-README.md')));
+      await tester.pump();
+      expect(find.byTooltip('Back to files'), findsOneWidget);
+      await tester.tap(find.byTooltip('Download README.md'));
+      await tester.pump();
+      expect(exports, ['README.md']);
+      expect(backend.calls.last, 'fs.download:/project');
+      expect(backend.input, isEmpty);
+    } finally {
+      await tester.pumpWidget(const SizedBox());
+      await tester.runAsync(app.shutdown);
+    }
+  });
+
   testWidgets('download exports selected file without typing or uploading', (
     tester,
   ) async {

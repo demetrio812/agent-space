@@ -1182,10 +1182,13 @@ class _TerminalSurfaceState extends State<TerminalSurface> {
     onPointerUp: (event) {
       final pointer = _tapPointer;
       _tapPointer = null;
+      // A held mouse button is still a click on release. Touch long presses
+      // belong to local selection; mouse selection is excluded by movement.
       if (pointer != event.pointer ||
           !widget.forwardMouseClicks ||
           _tapTime == null ||
-          event.timeStamp - _tapTime! >= kLongPressTimeout) {
+          (event.kind != PointerDeviceKind.mouse &&
+              event.timeStamp - _tapTime! >= kLongPressTimeout)) {
         return;
       }
       final keys = HardwareKeyboard.instance;
