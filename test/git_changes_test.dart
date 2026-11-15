@@ -96,6 +96,80 @@ class TreeChangesFixture extends ChangesFixture {
 
 void main() {
   testWidgets(
+    'Expand all and Collapse all control nested trees and filtered results independently',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(320, 850));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final backend = TreeChangesFixture();
+      final app = AppController(
+        snapshot: AppSnapshot(),
+        store: WidgetStore(),
+        backendFactory: (_) => backend,
+      );
+      try {
+        await app.start(polling: false);
+        app.select(backend.session.key.id);
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: SessionChanges(
+                app: app,
+                session: backend.session,
+                active: true,
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+        await tester.tap(find.byTooltip('Collapse all'));
+        await tester.pump();
+        expect(find.text('client.dart'), findsNothing);
+        expect(find.text('request.dart'), findsNothing);
+        expect(find.text('README.md'), findsOneWidget);
+        await tester.pump(const Duration(seconds: 5));
+        await tester.pump();
+        expect(find.text('request.dart'), findsNothing);
+        await tester.tap(
+          find.byKey(const ValueKey('changes-folder-unstaged-src')),
+        );
+        await tester.pump();
+        expect(find.text('api'), findsOneWidget);
+        expect(find.text('request.dart'), findsNothing);
+        await tester.tap(find.byTooltip('Expand all'));
+        await tester.pump();
+        expect(find.text('client.dart'), findsNWidgets(2));
+        expect(find.text('request.dart'), findsOneWidget);
+        await tester.tap(find.byTooltip('Collapse all'));
+        await tester.pump();
+        await tester.enterText(find.byType(TextField), 'request');
+        await tester.pump();
+        expect(find.text('request.dart'), findsOneWidget);
+        await tester.tap(find.byTooltip('Collapse all'));
+        await tester.pump();
+        expect(find.text('request.dart'), findsNothing);
+        await tester.tap(find.byTooltip('Expand all'));
+        await tester.pump();
+        expect(find.text('request.dart'), findsOneWidget);
+        await tester.enterText(find.byType(TextField), '');
+        await tester.pump();
+        expect(
+          find.text('request.dart'),
+          findsNothing,
+        ); // Filter controls preserve the full tree's state.
+        await tester.tap(find.byTooltip('Expand all'));
+        await tester.pump();
+        await tester.tap(find.text('request.dart'));
+        await tester.pump();
+        expect(find.byType(SelectableText), findsOneWidget);
+        expect(backend.input, isEmpty);
+        expect(tester.takeException(), isNull);
+      } finally {
+        await tester.pumpWidget(const SizedBox());
+        await tester.runAsync(app.shutdown);
+      }
+    },
+  );
+  testWidgets(
     'collapsed ancestors survive compact folder paths changing after refresh',
     (tester) async {
       await tester.binding.setSurfaceSize(const Size(390, 850));

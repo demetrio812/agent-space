@@ -190,13 +190,11 @@ class _SessionChangesState extends State<SessionChanges> {
 
   List<Widget> _treeRows(
     String section,
-    List<GitChange> entries,
+    List<GitChangeNode> roots,
     bool filtering,
   ) {
     final rows = <Widget>[];
-    final pending = [
-      for (final node in gitChangeTree(entries).reversed) (node, 0),
-    ];
+    final pending = [for (final node in roots.reversed) (node, 0)];
     while (pending.isNotEmpty) {
       final (node, depth) = pending.removeLast();
       final inset = 12.0 + depth.clamp(0, 6) * 14;
@@ -321,19 +319,55 @@ class _SessionChangesState extends State<SessionChanges> {
     final entries = value.entries
         .where((e) => e.path.toLowerCase().contains(query))
         .toList();
+    final trees = {
+      for (final section in ['staged', 'unstaged', 'untracked'])
+        section: gitChangeTree(entries.where((e) => e.section == section)),
+    };
+    final folders = <String>{};
+    for (final tree in trees.entries) {
+      final pending = tree.value.toList();
+      while (pending.isNotEmpty) {
+        final node = pending.removeLast();
+        if (node.change == null) {
+          folders.add('${tree.key}:${node.path}');
+          pending.addAll(node.children);
+        }
+      }
+    }
+    void expandAll(bool expand) => setState(() {
+      final collapsed = query.isEmpty ? collapsedFolders : collapsedMatches;
+      collapsed.clear();
+      if (!expand) collapsed.addAll(folders);
+    });
     return Column(
       children: [
         Padding(
           padding: const EdgeInsets.all(10),
-          child: TextField(
-            controller: filter,
-            onChanged: (_) => setState(collapsedMatches.clear),
-            style: const TextStyle(fontSize: 12),
-            decoration: const InputDecoration(
-              hintText: 'Filter changed files…',
-              prefixIcon: Icon(Icons.search, size: 17),
-              contentPadding: EdgeInsets.all(9),
-            ),
+          child: Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: filter,
+                  onChanged: (_) => setState(collapsedMatches.clear),
+                  style: const TextStyle(fontSize: 12),
+                  decoration: const InputDecoration(
+                    hintText: 'Filter changed files…',
+                    prefixIcon: Icon(Icons.search, size: 17),
+                    contentPadding: EdgeInsets.all(9),
+                  ),
+                ),
+              ),
+              IconButton(
+                tooltip: 'Expand all',
+                onPressed: folders.isEmpty ? null : () => expandAll(true),
+                icon: const Icon(Icons.unfold_more, size: 18),
+              ),
+              IconButton(
+                tooltip: 'Collapse all',
+                onPressed: folders.isEmpty ? null : () => expandAll(false),
+                icon: const Icon(Icons.unfold_less, size: 18),
+              ),
+            ],
           ),
         ),
         Expanded(
@@ -360,7 +394,7 @@ class _SessionChangesState extends State<SessionChanges> {
                         ),
                         ..._treeRows(
                           group.$1,
-                          entries.where((e) => e.section == group.$1).toList(),
+                          trees[group.$1]!,
                           query.isNotEmpty,
                         ),
                       ],
