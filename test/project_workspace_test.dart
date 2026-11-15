@@ -211,6 +211,10 @@ void main() {
         await tester.tap(find.byKey(ValueKey('project-file-$taskId')));
         await tester.pump(const Duration(milliseconds: 100));
         expect(find.text('Complete document'), findsOneWidget);
+        await tester.ensureVisible(
+          find.byKey(const ValueKey('project-tab-specs')),
+        );
+        await tester.pump();
         await tester.tap(find.byKey(const ValueKey('project-tab-specs')));
         await tester.pump();
         await tester.tap(find.byKey(ValueKey('project-file-$taskId')));

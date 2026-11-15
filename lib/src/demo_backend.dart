@@ -1,6 +1,7 @@
 import 'demo_file_browser.dart';
 import 'file_browser.dart';
 import 'project_files.dart';
+import 'git_changes.dart';
 import 'git_metadata.dart';
 import 'conversation.dart';
 
@@ -21,6 +22,7 @@ class DemoBackend
         SessionManagementBackend,
         ConversationBackend,
         ProjectFilesBackend,
+        GitChangesBackend,
         FileBrowserBackend {
   late final _browser = DemoFileBrowser(listProjectFiles, readProjectFile);
   @override
@@ -29,6 +31,58 @@ class DemoBackend
     String op,
     Map<String, dynamic> payload,
   ) => _browser.request(session, op, payload);
+
+  @override
+  Future<GitChangePage> listGitChanges(SessionInfo session) async =>
+      GitChangePage.fromJson({
+        'repository': true,
+        'scope': _fileId(200),
+        'folder': 'orbit-api',
+        'branch': 'feature/team-invitations',
+        'limited': false,
+        'entries': [
+          {
+            'id': _fileId(201),
+            'path': 'src/invitations.ts',
+            'oldPath': '',
+            'section': 'unstaged',
+            'status': 'M',
+          },
+          {
+            'id': _fileId(202),
+            'path': 'tests/invitations.test.ts',
+            'oldPath': '',
+            'section': 'untracked',
+            'status': '?',
+          },
+          {
+            'id': _fileId(203),
+            'path': 'README.md',
+            'oldPath': '',
+            'section': 'staged',
+            'status': 'M',
+          },
+        ],
+      });
+  @override
+  Future<GitDiff> readGitDiff(
+    SessionInfo session,
+    String scope,
+    String file,
+  ) async {
+    final page = await listGitChanges(session);
+    if (scope != page.scope || !page.entries.any((e) => e.id == file)) {
+      throw SessionUnavailable();
+    }
+    final entry = page.entries.firstWhere((e) => e.id == file);
+    return GitDiff(
+      scope: scope,
+      file: file,
+      notice: '',
+      text:
+          '--- a/${entry.path}\n+++ b/${entry.path}\n@@ -1,2 +1,3 @@\n // Team invitations\n-const expiresInHours = 24;\n+const expiresInHours = 48;\n+const singleUse = true;\n',
+    );
+  }
 
   String _fileId(int value) => value.toRadixString(16).padLeft(64, '0');
   @override

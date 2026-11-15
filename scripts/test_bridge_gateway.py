@@ -12,6 +12,7 @@ from bridge.gateway import Machine, MachineRegistry, PeerPool, GatewayWorker, ss
 from bridge.image_transfers import ImageTransfers
 from bridge.conversation import ConversationReader
 from bridge.project_files import ProjectFiles
+from bridge.git_changes import GitChanges
 from bridge.file_browser import FileBrowser
 from bridge.local_api import LocalApi
 from bridge.session_actions import SessionActions
@@ -28,6 +29,8 @@ class ApiPeer:
         self.connector=connector
         self.images=ImageTransfers(self.api,herdr.root/'images');self.files=FileBrowser(self.api)
     def request(self, row, on_event=None, timeout=6):
+        if row['op']=='changes.list': return GitChanges(self.api).listing(row['route'])
+        if row['op']=='changes.read': return GitChanges(self.api).read(row['route'],row['payload'])
         if row['op'].startswith('fs.'):return self.files.operation(row['op'],row['route'],row['payload'])
         if row['op']=='files.list': return ProjectFiles(self.api).listing(row['route'])
         if row['op']=='files.download': return ProjectFiles(self.api).read(row['route'],row['payload'],download=True)
@@ -125,6 +128,21 @@ class GatewayTests(unittest.TestCase):
         download=worker.operation({'op':'files.download','route':route,'payload':{'scope':page['scope'],'file':page['files'][0]['id']}})
         self.assertEqual(__import__('base64').b64decode(download['bytes']).decode('utf-8'),result['text'])
         self.assertEqual(result['text'],'Beta')
+        self.assertFalse(self.herdrs[a.id].calls)
+        self.assertFalse(any(c['method'].startswith('pane.send') for c in self.herdrs[b.id].calls))
+
+    def test_changes_stay_on_selected_peer_with_colliding_panes(self):
+        import subprocess
+        a=self.machine(1); b=self.machine(2);worker=self.worker('discovery')
+        for node,label in [(a,'Alpha'),(b,'Beta')]:
+            host=self.herdrs[node.id];host.agents[0]['foreground_cwd']=str(host.root)
+            subprocess.check_call(['git','init','-q',str(host.root)])
+            (host.root/'.gitignore').write_text('*\n!README.md\n')
+            (host.root/'README.md').write_text(label)
+        route=self.route(b);page=worker.operation({'op':'changes.list','route':route,'payload':{}})
+        self.assertEqual([e['path'] for e in page['entries']],['README.md'])
+        result=worker.operation({'op':'changes.read','route':route,'payload':{'scope':page['scope'],'file':page['entries'][0]['id']}})
+        self.assertIn('+Beta',result['text']);self.assertNotIn('Alpha',result['text'])
         self.assertFalse(self.herdrs[a.id].calls)
         self.assertFalse(any(c['method'].startswith('pane.send') for c in self.herdrs[b.id].calls))
 

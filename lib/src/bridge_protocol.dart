@@ -161,6 +161,10 @@ Uint8List encodeBridgeRecord(Map<String, dynamic> row) {
 
 Object bridgeRejection(Map<String, dynamic> error, {required bool input}) {
   const codes = {
+    'changes_changed',
+    'changes_unavailable',
+    'changes_timeout',
+    'changes_too_large',
     'invalid_request',
     'unsupported',
     'file_unavailable',
@@ -193,6 +197,18 @@ Object bridgeRejection(Map<String, dynamic> error, {required bool input}) {
   }
   if (input && error['dispatched'] == true) return DeliveryUncertain();
   return switch (error['code']) {
+    'changes_changed' => ConnectionFailure(
+      'Changes have updated. Refresh and select the file again.',
+    ),
+    'changes_too_large' => ConnectionFailure(
+      'These changes exceed the preview limits. Narrow the changes in your Git client.',
+    ),
+    'changes_timeout' => ConnectionFailure(
+      'Git took too long. Try refreshing Changes.',
+    ),
+    'changes_unavailable' => ConnectionFailure(
+      'Git changes are unavailable for this session folder.',
+    ),
     'file_permission' => FileRequestRejected(
       'Your account does not have permission for this folder or file.',
     ),

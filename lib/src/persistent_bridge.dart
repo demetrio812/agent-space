@@ -1,4 +1,5 @@
 import 'file_browser.dart';
+import 'git_changes.dart';
 import 'project_files.dart';
 
 import 'dart:async';
@@ -227,13 +228,16 @@ class PersistentBridge {
         'health',
       },
       BridgeLane.discovery => const {
+        'changes.list',
+        'changes.read',
         'fs.list',
         'fs.read',
         'catalog',
         'machines',
         'chat.read',
         'files.list',
-        'files.read', 'files.download',
+        'files.read',
+        'files.download',
         'health',
       },
       BridgeLane.input => const {
@@ -262,6 +266,10 @@ class PersistentBridge {
     }
     if (op.startsWith('fs.')) {
       validateBrowserPayload(op, payload);
+      validateSessionActionRoute('rename', route);
+    }
+    if (op.startsWith('changes.')) {
+      validateChangesPayload(op, payload);
       validateSessionActionRoute('rename', route);
     }
     if (op.startsWith('files.')) {

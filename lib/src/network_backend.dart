@@ -1,5 +1,6 @@
 import 'file_browser.dart';
 import 'project_files.dart';
+import 'git_changes.dart';
 
 import 'dart:convert';
 import 'dart:typed_data';
@@ -39,6 +40,7 @@ class NetworkHerdrBackend
         ImageAttachmentBackend,
         ConversationBackend,
         ProjectFilesBackend,
+        GitChangesBackend,
         ProjectDownloadBackend,
         FileBrowserBackend {
   NetworkHerdrBackend(this.profile, PersistentBridge bridge, {this.onClose})
@@ -532,6 +534,42 @@ class NetworkHerdrBackend
     }
     return result;
   }
+
+  Future<Map<String, dynamic>> _changesRequest(
+    SessionInfo session,
+    String op,
+    Map<String, dynamic> payload,
+  ) async {
+    validateChangesPayload(op, payload);
+    final current = _current(session), bridge = _bridge;
+    if (bridge == null || current.origin == null) throw SessionUnavailable();
+    final result = await bridge.request(
+      BridgeLane.discovery,
+      op,
+      payload,
+      route: current.origin!.route(current.key.terminal, current.paneId),
+      timeout: const Duration(seconds: 30),
+    );
+    _current(session);
+    return result;
+  }
+
+  @override
+  Future<GitChangePage> listGitChanges(SessionInfo session) async =>
+      GitChangePage.fromJson(
+        await _changesRequest(session, 'changes.list', {}),
+      );
+  @override
+  Future<GitDiff> readGitDiff(
+    SessionInfo session,
+    String scope,
+    String file,
+  ) async => GitDiff.fromJson(
+    await _changesRequest(session, 'changes.read', {
+      'scope': scope,
+      'file': file,
+    }),
+  );
 
   @override
   Future<ProjectManifest> listProjectFiles(SessionInfo session) async {

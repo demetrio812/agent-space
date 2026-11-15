@@ -1,5 +1,6 @@
 import 'file_browser.dart';
 import 'project_files.dart';
+import 'git_changes.dart';
 import 'dictation_shortcut.dart';
 
 import 'dart:async';
@@ -1389,6 +1390,45 @@ class AppController extends ChangeNotifier {
       }
       return result;
     };
+  }
+
+  bool get supportsGitChanges => _backend is GitChangesBackend;
+  Future<GitChangePage> listGitChanges(SessionInfo target) async {
+    final backend = _backend, generation = _generation;
+    if (backend is! GitChangesBackend ||
+        !dictationTargetIsCurrent(target, generation)) {
+      throw SessionUnavailable();
+    }
+    final result = await (backend as GitChangesBackend).listGitChanges(target);
+    if (!identical(backend, _backend) ||
+        !dictationTargetIsCurrent(target, generation)) {
+      throw SessionUnavailable();
+    }
+    return result;
+  }
+
+  Future<GitDiff> readGitDiff(
+    SessionInfo target,
+    String scope,
+    String file,
+  ) async {
+    final backend = _backend, generation = _generation;
+    if (backend is! GitChangesBackend ||
+        !dictationTargetIsCurrent(target, generation)) {
+      throw SessionUnavailable();
+    }
+    final result = await (backend as GitChangesBackend).readGitDiff(
+      target,
+      scope,
+      file,
+    );
+    if (!identical(backend, _backend) ||
+        !dictationTargetIsCurrent(target, generation) ||
+        result.scope != scope ||
+        result.file != file) {
+      throw SessionUnavailable();
+    }
+    return result;
   }
 
   bool get supportsProjectFiles => _backend is ProjectFilesBackend;

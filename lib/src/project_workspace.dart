@@ -1,4 +1,5 @@
 import 'session_file_browser.dart';
+import 'session_changes.dart';
 
 import 'dart:async';
 import 'dart:convert';
@@ -202,7 +203,12 @@ class _ProjectWorkspaceState extends State<ProjectWorkspace> {
         preference.opened.removeWhere((id) => result.file(id) == null);
         documents.removeWhere((id, _) => !preference.opened.contains(id));
         errors.removeWhere((id, _) => !preference.opened.contains(id));
-        if (!const ['files', 'specs', 'browser'].contains(preference.active) &&
+        if (!const [
+              'files',
+              'specs',
+              'browser',
+              'changes',
+            ].contains(preference.active) &&
             !preference.opened.contains(preference.active)) {
           preference.active = 'files';
         }
@@ -698,6 +704,7 @@ class _ProjectWorkspaceState extends State<ProjectWorkspace> {
                     _tab('files', 'Documents', Icons.description_outlined),
                     _tab('specs', 'Specs', Icons.checklist),
                     _tab('browser', 'Files', Icons.folder_outlined),
+                    _tab('changes', 'Changes', Icons.difference_outlined),
                     ...preference.opened
                         .map((id) => manifest?.file(id))
                         .whereType<ProjectFile>()
@@ -718,6 +725,20 @@ class _ProjectWorkspaceState extends State<ProjectWorkspace> {
             Expanded(
               child: Stack(
                 children: [
+                  Offstage(
+                    offstage: preference.active != 'changes',
+                    child: SessionChanges(
+                      key: ValueKey(
+                        'changes-${widget.session.key.id}-${manifest?.scope}',
+                      ),
+                      app: widget.app,
+                      session: widget.session,
+                      active:
+                          running &&
+                          preference.visible &&
+                          preference.active == 'changes',
+                    ),
+                  ),
                   Offstage(
                     offstage: preference.active != 'browser',
                     child: SessionFileBrowser(

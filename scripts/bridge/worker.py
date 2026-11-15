@@ -15,6 +15,7 @@ try:
     from .protocol import PROTOCOL, BridgeRejected, DeliveryUncertain, validate_request, read_record, write_record
     from .image_transfers import ImageTransfers
     from .file_browser import FileBrowser, validate_payload as validate_browser
+    from .git_changes import GitChanges, validate_payload as validate_changes
     from .project_files import ProjectFiles, validate_payload as validate_files
     from .conversation import ConversationReader, validate_payload as validate_chat
     from .git_metadata import GitMetadata
@@ -25,6 +26,7 @@ except ImportError:
     from protocol import PROTOCOL, BridgeRejected, DeliveryUncertain, validate_request, read_record, write_record
     from image_transfers import ImageTransfers
     from file_browser import FileBrowser, validate_payload as validate_browser
+    from git_changes import GitChanges, validate_payload as validate_changes
     from project_files import ProjectFiles, validate_payload as validate_files
     from conversation import ConversationReader, validate_payload as validate_chat
     from git_metadata import GitMetadata
@@ -69,6 +71,7 @@ class LocalWorker:
         self.git_metadata = GitMetadata(self.closed)
         self.conversation = ConversationReader(self.api)
         self.project_files = ProjectFiles(self.api)
+        self.git_changes = GitChanges(self.api)
         self.file_browser = FileBrowser(self.api)
         self._writer.start()
         threading.Thread(target=self._reap_images,daemon=True).start()
@@ -199,6 +202,10 @@ class LocalWorker:
             route=validate_management_route('rename',row.get('route'));check_worker_origin(self.config,route)
             if op not in ('fs.list','fs.read','fs.download') and not self.config.get('allowInput',True):raise BridgeRejected('unsupported')
             return self.file_browser.operation(op,route,payload)
+        if op in ('changes.list','changes.read'):
+            validate_changes(op,payload)
+            route=validate_management_route('rename',row.get('route'));check_worker_origin(self.config,route)
+            return self.git_changes.listing(route) if op=='changes.list' else self.git_changes.read(route,payload)
         if op in ('files.list','files.read','files.download'):
             validate_files(op,payload)
             route=validate_management_route('rename',row.get('route')); check_worker_origin(self.config,route)

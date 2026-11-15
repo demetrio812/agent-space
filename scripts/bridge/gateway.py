@@ -22,6 +22,7 @@ import zipfile
 try:
     from .file_browser import validate_payload as validate_browser
     from .peer_file_transfers import PeerFileTransfers
+    from .git_changes import GitChanges, validate_payload as validate_changes
     from .project_files import validate_payload as validate_files
     from .conversation import validate_payload as validate_chat
     from .image_transfers import validate_image_payload
@@ -33,6 +34,7 @@ try:
 except ImportError:
     from file_browser import validate_payload as validate_browser
     from peer_file_transfers import PeerFileTransfers
+    from git_changes import GitChanges, validate_payload as validate_changes
     from project_files import validate_payload as validate_files
     from conversation import validate_payload as validate_chat
     from image_transfers import validate_image_payload
@@ -548,8 +550,8 @@ class GatewayWorker(LocalWorker):
                 if self.closed.is_set():raise BridgeRejected('offline')
                 result=worker.request({'op':op,'route':route,'payload':row['payload']},timeout=30)
                 self.registry.require(route);return result
-        if op in ('files.list','files.read','files.download'):
-            validate_files(op,row['payload']); validate_management_route('rename',route)
+        if op in ('files.list','files.read','files.download','changes.list','changes.read'):
+            (validate_changes if op.startswith('changes.') else validate_files)(op,row['payload']); validate_management_route('rename',route)
             if route['machine']=='gateway': return super().operation(row)
             machine=self.registry.require(route)
             with self.pool.lease(machine,'discovery',self.priority|{machine.id}) as worker:

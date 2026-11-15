@@ -1,5 +1,11 @@
 # Persistent Herdr bridge
 
+## Read-only Git changes
+
+Discovery accepts `changes.list {}` and `changes.read {scope,file}` with the same exact pane/computer route as documents. List returns `{repository,scope,folder,branch,entries,limited}`; entries are `{id,path,oldPath,section,status}` with section staged/unstaged/untracked and Git status M/A/D/R/C/U/T/?. Read returns `{scope,file,text,notice}`. A no-repository result has an empty list. Scope binds host route, current folder/worktree identities, HEAD, index and working-file state; reads reject changed snapshots. No client paths, terminal input, Git mutation or network commands are accepted.
+
+The reader disables pagers, prompts, fsmonitor, hooks, textconv, external diff and configured clean/process filters, plus lazy object fetch. Git commands use fixed argv and literal paths, a four-second command limit and twenty-second operation budget. Output is bounded to 512 KiB, the list to 500 supported changes, and each UTF-8 diff to 256 KiB. Working-file reads do not follow symlinks; staged reads inspect indexed data. Binary, oversized and non-UTF-8 previews are explicit notices. Errors `changes_changed`, `changes_unavailable`, `changes_timeout` and `changes_too_large` are definite read failures, never delivery uncertainty. Refresh only the visible active tab; do not persist contents or let late replies replace another session.
+
 ## Read-only project documents
 
 Discovery now supports `files.list` with `{}` and `files.read` with `{scope,file}` (both lowercase SHA-256 references). Every operation carries an exact machine/session/target/generation/terminal/pane route and is revalidated around peer reads. There are no client paths or mutations. The host derives the current folder from Herdr and returns `{scope,folder,files,limited}`; each entry contains `{id,name,path,kind,section,feature,revision}`. Reads return `{scope,file,revision,text}`. Only the allowlisted discovered file may be opened; changing the folder or host identity invalidates the scope. Symlinks, nonregular/unowned files, invalid UTF-8 and oversized documents are rejected. Typed failures are `file_unavailable`, `file_changed`, `file_too_large` and `file_encoding`; none imply input dispatch.

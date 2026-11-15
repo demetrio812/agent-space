@@ -59,6 +59,20 @@ final class BridgeJobTests: XCTestCase {
       XCTAssertThrowsError(try validateBridgeEnvelope(row,configuration:c))
     }
   }
+  func testReadOnlyGitChangesRequireDiscoveryAndExactPanePayload() throws {
+    let c=try config("discovery")
+    let route:[String:Any] = ["machine":"gateway","session":"default","targetHash":String(repeating:"a",count:64),"generation":String(repeating:"b",count:64),"terminal":"t1","pane":"p1"]
+    func row(_ op:String,_ payload:[String:Any]) -> [String:Any] {
+      ["type":"request","protocol":"agentspace-bridge-v2","nonce":c.nonce,"lane":"discovery","id":"1","op":op,"payload":payload,"route":route]
+    }
+    XCTAssertNoThrow(try validateBridgeEnvelope(row("changes.list",[:]),configuration:c))
+    XCTAssertNoThrow(try validateBridgeEnvelope(row("changes.read",["scope":String(repeating:"a",count:64),"file":String(repeating:"b",count:64)]),configuration:c))
+    XCTAssertThrowsError(try validateBridgeEnvelope(row("changes.list",["path":"/tmp"]),configuration:c))
+    XCTAssertThrowsError(try validateBridgeEnvelope(row("changes.read",["scope":"../outside","file":"/etc/private"]),configuration:c))
+    XCTAssertThrowsError(try validateBridgeEnvelope(row("changes.write",[:]),configuration:c))
+    var noPane=row("changes.list",[:]);noPane["route"]=["machine":"gateway"]
+    XCTAssertThrowsError(try validateBridgeEnvelope(noPane,configuration:c))
+  }
   func testImageLaneExactPayloadsAndBounds() throws {
     let c=try config("transfer")
     let route:[String:Any] = ["machine":"gateway","session":"default","targetHash":String(repeating:"a",count:64),"generation":String(repeating:"b",count:64),"terminal":"t1","pane":"p1"]
