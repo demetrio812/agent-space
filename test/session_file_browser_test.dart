@@ -9,6 +9,7 @@ import 'package:agentspace/src/controller.dart';
 import 'package:agentspace/src/storage.dart';
 import 'package:agentspace/src/models.dart';
 import 'package:agentspace/src/project_workspace.dart';
+import 'package:agentspace/src/project_file_viewer.dart';
 import 'package:agentspace/src/ui_common.dart';
 
 import 'file_browser_test.dart' show browserPage, hash;
@@ -112,7 +113,92 @@ class UploadRaceFixture extends BrowserFixture {
   }
 }
 
+class RefreshBrowserFixture extends BrowserFixture {
+  bool newer = false;
+  @override
+  Future<Map<String, dynamic>> fileBrowserRequest(
+    SessionInfo s,
+    String op,
+    Map<String, dynamic> p,
+  ) async {
+    final result = await super.fileBrowserRequest(s, op, p);
+    final revision = newer ? 'f' * 64 : hash, scope = newer ? 'e' * 64 : hash;
+    if (op == 'fs.list') {
+      result['scope'] = scope;
+      for (final entry in result['entries'] as List) {
+        if (entry['name'] == 'README.md') entry['revision'] = revision;
+      }
+    }
+    if (op == 'fs.read') {
+      if (p['revision'] != revision || p['scope'] != scope) {
+        throw StateError('Stale file metadata');
+      }
+      result['document']['text'] = newer
+          ? '# Updated preview'
+          : '# Original preview';
+    }
+    return result;
+  }
+}
+
 void main() {
+  testWidgets(
+    'Files preview Refresh obtains new metadata and keeps the preview open',
+    (tester) async {
+      final backend = RefreshBrowserFixture();
+      final app = AppController(
+        snapshot: AppSnapshot(),
+        store: WidgetStore(),
+        backendFactory: (_) => backend,
+      );
+      try {
+        await app.start(polling: false);
+        app.select(backend.session.key.id);
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: SessionFileBrowser(
+                app: app,
+                session: backend.session,
+                active: true,
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+        await tester.tap(find.byKey(const ValueKey('browser-entry-README.md')));
+        await tester.pump();
+        expect(find.text('Original preview'), findsOneWidget);
+        backend.newer = true;
+        await tester.tap(find.byTooltip('Refresh README.md'));
+        await tester.pump();
+        await tester.pump();
+        expect(find.text('Updated preview'), findsOneWidget);
+        expect(find.byTooltip('Back to files'), findsOneWidget);
+        expect(
+          tester
+              .widget<ProjectFileViewer>(find.byType(ProjectFileViewer))
+              .document
+              .revision,
+          'f' * 64,
+        );
+        expect(backend.calls.sublist(2), [
+          'fs.list:/project',
+          'fs.read:/project',
+        ]);
+        backend.failPath = '/project';
+        await tester.tap(find.byTooltip('Refresh README.md'));
+        await tester.pump();
+        await tester.pump();
+        expect(find.text('Updated preview'), findsOneWidget);
+        expect(find.textContaining('last readable version'), findsOneWidget);
+        expect(backend.input, isEmpty);
+      } finally {
+        await tester.pumpWidget(const SizedBox());
+        await tester.runAsync(app.shutdown);
+      }
+    },
+  );
   testWidgets('Files single-document preview exposes working Download action', (
     tester,
   ) async {

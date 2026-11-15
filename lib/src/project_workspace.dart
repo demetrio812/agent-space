@@ -182,10 +182,10 @@ class _ProjectWorkspaceState extends State<ProjectWorkspace> {
     }
   }
 
-  Future<void> _refresh() async {
+  Future<void> _refresh({String? forceFile}) async {
     if (!wanted || busy) return;
     final token = epoch;
-    busy = true;
+    setState(() => busy = true);
     try {
       final result = await widget.app.listProjectFiles(widget.session);
       if (!mounted || token != epoch || !wanted) return;
@@ -219,10 +219,12 @@ class _ProjectWorkspaceState extends State<ProjectWorkspace> {
         error = null;
       });
       if (hasPreference) _save();
-      final active = result.file(preference.active);
+      final active = result.file(forceFile ?? preference.active);
       if (preference.visible &&
           active != null &&
-          documents[active.id]?.revision != active.revision) {
+          preference.opened.contains(active.id) &&
+          (forceFile != null ||
+              documents[active.id]?.revision != active.revision)) {
         await _load(active);
       }
     } catch (e) {
@@ -244,6 +246,7 @@ class _ProjectWorkspaceState extends State<ProjectWorkspace> {
   Future<void> _load(ProjectFile file) async {
     final page = manifest;
     if (page == null ||
+        !preference.opened.contains(file.id) ||
         loading.contains(file.id) ||
         !running ||
         !preference.visible) {
@@ -591,14 +594,31 @@ class _ProjectWorkspaceState extends State<ProjectWorkspace> {
       children: [
         Align(
           alignment: Alignment.centerRight,
-          child: TextButton.icon(
-            onPressed: downloading.contains(file.id)
-                ? null
-                : () => unawaited(_download(file)),
-            icon: const Icon(Icons.download_outlined, size: 17),
-            label: const Text('Download'),
+          child: Wrap(
+            alignment: WrapAlignment.end,
+            children: [
+              Tooltip(
+                message: 'Refresh ${file.name}',
+                child: TextButton.icon(
+                  onPressed: busy || loading.contains(file.id)
+                      ? null
+                      : () => unawaited(_refresh(forceFile: file.id)),
+                  icon: const Icon(Icons.refresh, size: 17),
+                  label: const Text('Refresh'),
+                ),
+              ),
+              TextButton.icon(
+                onPressed: downloading.contains(file.id)
+                    ? null
+                    : () => unawaited(_download(file)),
+                icon: const Icon(Icons.download_outlined, size: 17),
+                label: const Text('Download'),
+              ),
+            ],
           ),
         ),
+        if (loading.contains(file.id))
+          const LinearProgressIndicator(minHeight: 2),
         if (problem != null)
           Padding(
             padding: const EdgeInsets.all(12),

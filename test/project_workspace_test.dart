@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/services.dart';
 import 'package:xterm/xterm.dart' show TerminalView;
@@ -90,6 +93,144 @@ class PanelCountingStore extends WidgetStore {
 }
 
 void main() {
+  testWidgets(
+    'document Refresh stays bound to its file after switching preview tabs',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1200, 800));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final backend = ProjectFixture();
+      backend.texts[readmeId] = 'Original README';
+      backend.texts[htmlId] = 'Original HTML';
+      final app = AppController(
+        snapshot: AppSnapshot(),
+        store: WidgetStore(),
+        backendFactory: (_) => backend,
+      );
+      Future<void> tab(String id) async {
+        final target = find.byKey(ValueKey('project-tab-$id'));
+        await tester.ensureVisible(target);
+        await tester.pump();
+        await tester.tap(target);
+        await tester.pump();
+      }
+
+      try {
+        await app.start(polling: false);
+        app.select(backend.session.key.id);
+        await tester.pumpWidget(workspace(app, backend));
+        await tester.pump(const Duration(milliseconds: 300));
+        await tester.tap(find.byKey(ValueKey('project-file-$readmeId')));
+        await tester.pump();
+        await tab('files');
+        await tester.tap(find.byKey(ValueKey('project-file-$htmlId')));
+        await tester.pump();
+        await tab(readmeId);
+        backend.manifestHold = Completer<ProjectManifest>();
+        backend.texts[readmeId] = 'Updated README';
+        backend.texts[htmlId] = 'Unrequested HTML update';
+        final before = backend.reads;
+        await tester.tap(find.byTooltip('Refresh README.md'));
+        await tester.pump();
+        await tab(htmlId);
+        backend.manifestHold!.complete(
+          ProjectManifest.fromJson(projectManifest()),
+        );
+        await tester.pump();
+        await tester.pump();
+        var viewer = tester.widget<ProjectFileViewer>(
+          find.byType(ProjectFileViewer),
+        );
+        expect(viewer.file.id, htmlId);
+        expect(viewer.document.text, 'Original HTML');
+        expect(backend.reads, before + 1);
+        await tab(readmeId);
+        viewer = tester.widget<ProjectFileViewer>(
+          find.byType(ProjectFileViewer),
+        );
+        expect(viewer.document.text, 'Updated README');
+        expect(backend.reads, before + 1);
+        expect(backend.input, isEmpty);
+      } finally {
+        await tester.pumpWidget(const SizedBox());
+        await tester.runAsync(app.shutdown);
+      }
+    },
+  );
+  for (final target in [
+    (readmeId, 'README.md'),
+    (htmlId, 'preview.html'),
+    (taskId, 'tasks.md'),
+  ]) {
+    testWidgets(
+      'Refresh ${target.$2} rereads just that preview and recovers from failure',
+      (tester) async {
+        await tester.binding.setSurfaceSize(const Size(1200, 800));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        final backend = ProjectFixture();
+        backend.texts[target.$1] = 'Original preview';
+        final app = AppController(
+          snapshot: AppSnapshot(),
+          store: WidgetStore(),
+          backendFactory: (_) => backend,
+        );
+        try {
+          await app.start(polling: false);
+          app.select(backend.session.key.id);
+          await tester.pumpWidget(workspace(app, backend));
+          await tester.pump(const Duration(milliseconds: 300));
+          if (target.$1 == taskId) {
+            await tester.tap(find.byKey(const ValueKey('project-tab-specs')));
+            await tester.pump();
+          }
+          await tester.tap(find.byKey(ValueKey('project-file-${target.$1}')));
+          await tester.pump(const Duration(milliseconds: 100));
+          final before = backend.reads;
+          backend.texts[target.$1] = 'Updated preview';
+          await tester.tap(find.byTooltip('Refresh ${target.$2}'));
+          await tester.pump();
+          await tester.pump();
+          final viewer = tester.widget<ProjectFileViewer>(
+            find.byType(ProjectFileViewer),
+          );
+          expect(viewer.file.id, target.$1);
+          expect(viewer.document.text, 'Updated preview');
+          expect(
+            backend.reads,
+            before + 1,
+          ); // Force a read even with unchanged manifest revision.
+          backend.failReads = true;
+          await tester.tap(find.byTooltip('Refresh ${target.$2}'));
+          await tester.pump();
+          await tester.pump();
+          expect(
+            tester
+                .widget<ProjectFileViewer>(find.byType(ProjectFileViewer))
+                .document
+                .text,
+            'Updated preview',
+          );
+          expect(find.textContaining('last readable version'), findsOneWidget);
+          backend.failReads = false;
+          backend.texts[target.$1] = 'Recovered preview';
+          await tester.tap(find.byTooltip('Refresh ${target.$2}'));
+          await tester.pump();
+          await tester.pump();
+          expect(
+            tester
+                .widget<ProjectFileViewer>(find.byType(ProjectFileViewer))
+                .document
+                .text,
+            'Recovered preview',
+          );
+          expect(find.textContaining('last readable version'), findsNothing);
+          expect(backend.input, isEmpty);
+        } finally {
+          await tester.pumpWidget(const SizedBox());
+          await tester.runAsync(app.shutdown);
+        }
+      },
+    );
+  }
   for (final entry in [(readmeId, 'README.md'), (htmlId, 'preview.html')]) {
     testWidgets('open ${entry.$2} preview downloads original source bytes', (
       tester,

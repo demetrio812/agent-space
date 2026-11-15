@@ -295,6 +295,67 @@ class _SessionFileBrowserState extends State<SessionFileBrowser> {
     }
   }
 
+  Future<void> _refreshPreview() async {
+    final folder = page, document = preview;
+    if (!widget.active ||
+        busy ||
+        uploading ||
+        folder == null ||
+        document == null) {
+      return;
+    }
+    final token = ++epoch;
+    setState(() {
+      busy = true;
+      error = null;
+      message = null;
+    });
+    try {
+      final current = BrowserPage.fromJson(
+        await request('fs.list', {'path': folder.path}),
+      );
+      if (!_current(token)) return;
+      if (current.path != folder.path) {
+        throw const FormatException(
+          'The folder changed. Return to Files and open it again.',
+        );
+      }
+      final entry = current.entries
+          .where((e) => e.name == document.file.name && e.previewable)
+          .firstOrNull;
+      if (entry == null) {
+        throw const FormatException(
+          'The file is no longer available in this folder.',
+        );
+      }
+      final result = BrowserPreview.fromJson(
+        await request('fs.read', {
+          'path': current.path,
+          'scope': current.scope,
+          'name': entry.name,
+          'revision': entry.revision,
+        }),
+        current,
+        entry,
+      );
+      if (_current(token)) {
+        setState(() {
+          page = current;
+          preview = result;
+        });
+      }
+    } catch (e) {
+      if (_current(token)) {
+        setState(
+          () => error =
+              'Showing the last readable version. ${_problem(e, e is FormatException ? e.message : 'Could not refresh this file. Try Refresh again.')}',
+        );
+      }
+    } finally {
+      if (_current(token)) setState(() => busy = false);
+    }
+  }
+
   Future<List<BrowserSource>> _pick() async {
     final files = await openFiles(confirmButtonText: 'Upload');
     return files.map(BrowserSource.fromFile).toList();
@@ -476,6 +537,14 @@ class _SessionFileBrowserState extends State<SessionFileBrowser> {
               ),
               if (previewEntry != null)
                 IconButton(
+                  tooltip: 'Refresh ${document.file.name}',
+                  onPressed: enabled
+                      ? () => unawaited(_refreshPreview())
+                      : null,
+                  icon: const Icon(Icons.refresh, size: 19),
+                ),
+              if (previewEntry != null)
+                IconButton(
                   tooltip: 'Download ${previewEntry.name}',
                   onPressed: enabled && committed
                       ? () => unawaited(_download(previewEntry))
@@ -484,6 +553,7 @@ class _SessionFileBrowserState extends State<SessionFileBrowser> {
                 ),
             ],
           ),
+          if (busy) const LinearProgressIndicator(minHeight: 2),
           if (error != null || message != null)
             Padding(
               padding: const EdgeInsets.all(8),
