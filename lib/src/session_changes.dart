@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'backend_errors.dart';
 import 'controller.dart';
 import 'git_changes.dart';
+import 'git_change_tree.dart';
 import 'models.dart';
 import 'ui_common.dart';
 
@@ -32,6 +33,8 @@ class _SessionChangesState extends State<SessionChanges> {
   int epoch = 0, readEpoch = 0;
   Timer? timer;
   final filter = TextEditingController();
+  final collapsedFolders = <String>{};
+  final collapsedMatches = <String>{};
   bool get live => widget.active && widget.app.isActive;
   bool _current(int token) => mounted && live && token == epoch;
   Object _target(SessionInfo s) => (
@@ -66,6 +69,8 @@ class _SessionChangesState extends State<SessionChanges> {
         diff = null;
         error = null;
         filter.clear();
+        collapsedFolders.clear();
+        collapsedMatches.clear();
       }
       if (live) unawaited(_refresh());
     }
@@ -182,6 +187,123 @@ class _SessionChangesState extends State<SessionChanges> {
       ),
     ),
   );
+
+  List<Widget> _treeRows(
+    String section,
+    List<GitChange> entries,
+    bool filtering,
+  ) {
+    final rows = <Widget>[];
+    final pending = [
+      for (final node in gitChangeTree(entries).reversed) (node, 0),
+    ];
+    while (pending.isNotEmpty) {
+      final (node, depth) = pending.removeLast();
+      final inset = 12.0 + depth.clamp(0, 6) * 14;
+      final entry = node.change;
+      if (entry == null) {
+        final id = '$section:${node.path}';
+        final collapsed = filtering ? collapsedMatches : collapsedFolders;
+        // Compaction can change "src" to "src/api" after a refresh.
+        // An explicitly collapsed ancestor still owns its descendants.
+        bool containsPath(String folder) =>
+            id == folder || id.startsWith('$folder/');
+        final expanded = !collapsed.any(containsPath);
+        rows.add(
+          Semantics(
+            expanded: expanded,
+            child: ListTile(
+              key: ValueKey('changes-folder-$section-${node.path}'),
+              dense: true,
+              contentPadding: EdgeInsets.only(left: inset, right: 12),
+              leading: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    expanded ? Icons.expand_more : Icons.chevron_right,
+                    size: 16,
+                  ),
+                  const SizedBox(width: 4),
+                  Icon(
+                    expanded
+                        ? Icons.folder_open_outlined
+                        : Icons.folder_outlined,
+                    size: 18,
+                    color: context.accent,
+                  ),
+                ],
+              ),
+              title: Tooltip(
+                message: node.path,
+                child: Text(
+                  node.name,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              trailing: Text(
+                '${node.count}',
+                style: TextStyle(fontSize: 11, color: context.mutedInk),
+              ),
+              onTap: () => setState(() {
+                if (expanded) {
+                  collapsed.add(id);
+                } else {
+                  collapsed.removeWhere(containsPath);
+                }
+              }),
+            ),
+          ),
+        );
+        if (expanded) {
+          pending.addAll(
+            node.children.reversed.map((child) => (child, depth + 1)),
+          );
+        }
+      } else {
+        rows.add(
+          ListTile(
+            key: ValueKey('changes-file-$section-${entry.path}'),
+            dense: true,
+            contentPadding: EdgeInsets.only(left: inset, right: 12),
+            leading: Text(
+              entry.status,
+              style: TextStyle(
+                color: entry.status == 'D'
+                    ? context.attention
+                    : context.success,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            title: Tooltip(
+              message: entry.path,
+              child: Text(
+                node.name,
+                style: const TextStyle(fontSize: 12),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            subtitle: Text(
+              entry.oldPath.isEmpty
+                  ? entry.label
+                  : '${entry.label} from ${entry.oldPath}',
+              style: TextStyle(fontSize: 10, color: context.mutedInk),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+            onTap: () => unawaited(_read(entry)),
+          ),
+        );
+      }
+    }
+    return rows;
+  }
+
   Widget _list() {
     final value = page;
     if (value == null) {
@@ -205,7 +327,7 @@ class _SessionChangesState extends State<SessionChanges> {
           padding: const EdgeInsets.all(10),
           child: TextField(
             controller: filter,
-            onChanged: (_) => setState(() {}),
+            onChanged: (_) => setState(collapsedMatches.clear),
             style: const TextStyle(fontSize: 12),
             decoration: const InputDecoration(
               hintText: 'Filter changed files…',
@@ -236,42 +358,11 @@ class _SessionChangesState extends State<SessionChanges> {
                             ),
                           ),
                         ),
-                        for (final entry in entries.where(
-                          (e) => e.section == group.$1,
-                        ))
-                          ListTile(
-                            dense: true,
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                            ),
-                            leading: Text(
-                              entry.status,
-                              style: TextStyle(
-                                color: entry.status == 'D'
-                                    ? context.attention
-                                    : context.success,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            title: Text(
-                              entry.path,
-                              style: const TextStyle(fontSize: 12),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            subtitle: Text(
-                              entry.oldPath.isEmpty
-                                  ? entry.label
-                                  : '${entry.label} from ${entry.oldPath}',
-                              style: TextStyle(
-                                fontSize: 10,
-                                color: context.mutedInk,
-                              ),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            onTap: () => unawaited(_read(entry)),
-                          ),
+                        ..._treeRows(
+                          group.$1,
+                          entries.where((e) => e.section == group.$1).toList(),
+                          query.isNotEmpty,
+                        ),
                       ],
                   ],
                 ),

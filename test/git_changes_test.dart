@@ -66,7 +66,161 @@ class ChangesFixture extends ProjectFixture implements GitChangesBackend {
       : diffHold!.future;
 }
 
+class TreeChangesFixture extends ChangesFixture {
+  bool hideWidgets = false;
+  @override
+  Future<GitChangePage> listGitChanges(SessionInfo s) async {
+    changeLists++;
+    return GitChangePage.fromJson({
+      ...changePage(),
+      'entries': [
+        for (final row in [
+          (1, 'src/api/client.dart', 'unstaged'),
+          (2, 'src/api/request.dart', 'unstaged'),
+          (3, 'src/widgets/button.dart', 'unstaged'),
+          (4, 'README.md', 'unstaged'),
+          (5, 'src/api/client.dart', 'staged'),
+        ])
+          if (!hideWidgets || row.$2 != 'src/widgets/button.dart')
+            {
+              'id': row.$1.toRadixString(16).padLeft(64, '0'),
+              'path': row.$2,
+              'oldPath': '',
+              'section': row.$3,
+              'status': 'M',
+            },
+      ],
+    });
+  }
+}
+
 void main() {
+  testWidgets(
+    'collapsed ancestors survive compact folder paths changing after refresh',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(390, 850));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final backend = TreeChangesFixture();
+      final app = AppController(
+        snapshot: AppSnapshot(),
+        store: WidgetStore(),
+        backendFactory: (_) => backend,
+      );
+      try {
+        await app.start(polling: false);
+        app.select(backend.session.key.id);
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: SessionChanges(
+                app: app,
+                session: backend.session,
+                active: true,
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+        await tester.tap(
+          find.byKey(const ValueKey('changes-folder-unstaged-src')),
+        );
+        await tester.pump();
+        backend.hideWidgets = true;
+        await tester.pump(const Duration(seconds: 5));
+        await tester.pump();
+        expect(find.text('request.dart'), findsNothing);
+        final compact = find.byKey(
+          const ValueKey('changes-folder-unstaged-src/api'),
+        );
+        expect(compact, findsOneWidget);
+        await tester.tap(compact);
+        await tester.pump();
+        expect(find.text('request.dart'), findsOneWidget);
+        expect(backend.input, isEmpty);
+      } finally {
+        await tester.pumpWidget(const SizedBox());
+        await tester.runAsync(app.shutdown);
+      }
+    },
+  );
+  testWidgets(
+    'Changes groups folders, keeps collapse through refresh and expands filtered matches',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(390, 850));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final backend = TreeChangesFixture();
+      final app = AppController(
+        snapshot: AppSnapshot(),
+        store: WidgetStore(),
+        backendFactory: (_) => backend,
+      );
+      try {
+        await app.start(polling: false);
+        app.select(backend.session.key.id);
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: workspaceTheme(Brightness.dark),
+            home: Scaffold(
+              body: SessionChanges(
+                app: app,
+                session: backend.session,
+                active: true,
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+        expect(find.text('api'), findsOneWidget);
+        expect(find.text('client.dart'), findsNWidgets(2));
+        expect(find.text('request.dart'), findsOneWidget);
+        expect(find.text('src/api/client.dart'), findsNothing);
+        final folder = find.byKey(
+          const ValueKey('changes-folder-unstaged-src'),
+        );
+        await tester.tap(folder);
+        await tester.pump();
+        expect(find.text('request.dart'), findsNothing);
+        expect(
+          find.text('client.dart'),
+          findsOneWidget,
+        ); // Staged tree stays open.
+        await tester.pump(const Duration(seconds: 5));
+        await tester.pump();
+        expect(find.text('request.dart'), findsNothing);
+        await tester.enterText(find.byType(TextField), 'request');
+        await tester.pump();
+        expect(find.text('request.dart'), findsOneWidget);
+        expect(find.text('button.dart'), findsNothing);
+        await tester.tap(
+          find.byKey(const ValueKey('changes-folder-unstaged-src/api')),
+        );
+        await tester.pump();
+        expect(find.text('request.dart'), findsNothing);
+        await tester.tap(
+          find.byKey(const ValueKey('changes-folder-unstaged-src/api')),
+        );
+        await tester.pump();
+        expect(find.text('request.dart'), findsOneWidget);
+        await tester.enterText(find.byType(TextField), '');
+        await tester.pump();
+        expect(find.text('request.dart'), findsNothing);
+        await tester.tap(folder);
+        await tester.pump();
+        await tester.tap(find.text('request.dart'));
+        await tester.pump();
+        expect(find.text('src/api/request.dart'), findsOneWidget);
+        expect(find.byType(SelectableText), findsOneWidget);
+        await tester.tap(find.byTooltip('Back to changes'));
+        await tester.pump();
+        expect(find.text('request.dart'), findsOneWidget);
+        expect(backend.input, isEmpty);
+        expect(tester.takeException(), isNull);
+      } finally {
+        await tester.pumpWidget(const SizedBox());
+        await tester.runAsync(app.shutdown);
+      }
+    },
+  );
   test(
     'network Changes uses only discovery and the selected peer route',
     () async {
@@ -265,7 +419,7 @@ void main() {
           expect(find.text('feature/example'), findsOneWidget);
           expect(find.text('Staged · 1'), findsOneWidget);
           expect(find.text('Untracked · 1'), findsOneWidget);
-          await tester.tap(find.text('src/main.dart'));
+          await tester.tap(find.text('main.dart'));
           await tester.pump();
           expect(find.byType(SelectableText), findsOneWidget);
           expect(find.textContaining('+new', findRichText: true), findsWidgets);
@@ -306,7 +460,7 @@ void main() {
       await tester.pumpWidget(view(true));
       await tester.pump();
       backend.diffHold = Completer<GitDiff>();
-      await tester.tap(find.text('src/main.dart'));
+      await tester.tap(find.text('main.dart'));
       await tester.pump();
       await tester.pumpWidget(view(false));
       final count = backend.changeLists;
