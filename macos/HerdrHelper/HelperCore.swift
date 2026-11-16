@@ -1,5 +1,6 @@
 import Foundation
 import Darwin
+let maxHerdrInputBytes = 256 * 1024
 func socketIdentity(_ path: String) throws -> String {
   guard path.hasPrefix("/"), path.utf8.count <= 4096, !path.contains("\0") else { throw HelperFault(message: "Choose an absolute Herdr socket path.") }
   let canonical = URL(fileURLWithPath: path).resolvingSymlinksInPath().path
@@ -13,7 +14,7 @@ func validateOperation(_ args: [String]) throws -> Bool {
   if args.count == 4 && args[0...2] == ["pane","layout","--pane"] && id(args[3]) { return false }
   if args.count == 4 && args[0...1] == ["pane","send-text"] && id(args[2]) {
     let text = args[3]
-    guard !text.isEmpty, text.utf8.count <= 16384,
+    guard !text.isEmpty, text.utf8.count <= maxHerdrInputBytes,
           !text.unicodeScalars.contains(where: { $0.value < 32 || (127...159).contains($0.value) }) else { throw HelperFault(message:"Invalid terminal text.") }
     return false
   }
@@ -29,7 +30,7 @@ func validateOperation(_ args: [String]) throws -> Bool {
   }
   if args.count == 4 && args[0...1] == ["pane","run"] && id(args[2]) {
     let text = args[3]
-    guard !text.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty, text.utf8.count <= 16384,
+    guard !text.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty, text.utf8.count <= maxHerdrInputBytes,
           !text.unicodeScalars.contains(where: { ($0.value < 32 && $0.value != 9 && $0.value != 10) || (127...159).contains($0.value) }) else { throw HelperFault(message: "Invalid terminal input.") }
     return false
   }

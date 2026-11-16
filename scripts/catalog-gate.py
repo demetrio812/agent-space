@@ -16,7 +16,10 @@ import time
 
 MAX_CATALOG_BYTES = 2 * 1024 * 1024
 MAX_ERROR_BYTES = 64 * 1024
-MAX_INPUT_BYTES = 16384
+# The persistent worker uses these validators. Legacy command-line envelopes
+# remain bounded separately for compatibility with existing restricted gates.
+MAX_INPUT_BYTES = 256 * 1024
+MAX_LEGACY_INPUT_BYTES = 16 * 1024
 SEND_COMMAND = re.compile(r'agentspace-send-v1 ([0-9a-f]{64}) ([A-Za-z0-9_.:@%+/][A-Za-z0-9_.:@%+/-]{0,255}) ([A-Za-z0-9+/=]{1,21848})', re.ASCII)
 OBSERVE_COMMAND = re.compile(r'agentspace-observe-v1 ([0-9a-f]{64}) ([A-Za-z0-9_.:@%+/][A-Za-z0-9_.:@%+/-]{0,255})', re.ASCII)
 INPUT_COMMAND = re.compile(r'agentspace-input-v1 ([0-9a-f]{64}) ([A-Za-z0-9_.:@%+/][A-Za-z0-9_.:@%+/-]{0,255}) ([A-Za-z0-9+/=]{1,87384})', re.ASCII)
@@ -197,7 +200,7 @@ def send_text(binary, socket_path, identity, terminal, encoded, allow_input=Fals
         raise ValueError('Input is not enabled for this headset key.')
     parse_command(f'agentspace-send-v1 {identity} {terminal} {encoded}')
     raw = base64.b64decode(encoded, validate=True)
-    if not 1 <= len(raw) <= MAX_INPUT_BYTES or base64.b64encode(raw).decode() != encoded:
+    if not 1 <= len(raw) <= MAX_LEGACY_INPUT_BYTES or base64.b64encode(raw).decode() != encoded:
         raise ValueError('Invalid input size or encoding')
     text = raw.decode('utf-8', errors='strict')
     validate_send(text)
@@ -235,6 +238,8 @@ def terminal_input(binary, socket_path, identity, terminal, encoded, allow_input
         raise ValueError('Invalid terminal input encoding')
     value = json.loads(raw.decode('utf-8', errors='strict'))
     method, params = validate_input(value)
+    if isinstance(params.get('text'), str) and len(params['text'].encode('utf-8')) > MAX_LEGACY_INPUT_BYTES:
+        raise ValueError('Legacy terminal input is limited to 16 KiB')
     if method == 'pane.send_input':
         raise ValueError('Terminal paste requires a persistent connection')
     operation = ['send-text', params['text']] if method == 'pane.send_text' else ['send-keys', *params['keys']]

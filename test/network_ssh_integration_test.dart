@@ -191,6 +191,26 @@ void main() {
     return app;
   }
 
+  test('maximum paste and Send reach only the selected peer', () async {
+    final connection = backend();
+    final b = peer(await connection.listSessions(), 'b');
+    final text = '🙂' * 65536;
+    await connection.sendTerminalInput(b, TerminalInput.paste(text));
+    await connection.sendText(b, text);
+    final stats = await control('stats');
+    expect(sends(stats, 'gateway'), isEmpty);
+    expect(sends(stats, 'a'), isEmpty);
+    final received = sends(stats, 'b');
+    expect(received, hasLength(2));
+    expect(received.map((r) => r['method']), everyElement('pane.send_input'));
+    expect(received[0]['params'], {'pane_id': 'p1', 'text': text, 'keys': []});
+    expect(received[1]['params'], {
+      'pane_id': 'p1',
+      'text': text,
+      'keys': ['Enter'],
+    });
+  }, skip: skip);
+
   test(
     'SSH image drop reaches named peer while typing and preview continue; lost insertion survives restart',
     () async {

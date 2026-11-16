@@ -1760,7 +1760,8 @@ class AppController extends ChangeNotifier {
       ),
     );
     final cost = input.estimatedBytes;
-    if (queue.bytes + cost > 65536 || queue.pending.length >= 128) {
+    if (queue.bytes + cost > maxQueuedTerminalBytes ||
+        queue.pending.length >= 128) {
       state.uncertain = true;
       state.message = 'Terminal input stopped because the queue was full. Some keys were not sent. Check the terminal before typing again.';
       queue.layout.uncertainDeliveries.add(id);
@@ -1789,7 +1790,7 @@ class AppController extends ChangeNotifier {
         !input.isPaste &&
         input.textValue != null &&
         utf8.encode(last.textValue! + input.textValue!).length <=
-            maxInputBytes) {
+            maxTypingBatchBytes) {
       previous!.input = TerminalInput.text(last.textValue! + input.textValue!);
     } else if (last?.keyNames != null &&
         input.keyNames != null &&

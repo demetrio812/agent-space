@@ -22,6 +22,7 @@ def serve(connection):
         if method.startswith('pane.send_') and (root/'fail-after-input').exists(): return
         result={
           'agent.list':{'agents':[{'terminal_id':'t1','pane_id':'p1','workspace_id':'w1','tab_id':'tab1','terminal_title':'Normal SSH fixture','agent_status':'idle'}]},
+          'pane.list':{'panes':[{'terminal_id':'t1','pane_id':'p1','workspace_id':'w1','tab_id':'tab1'}]},
           'workspace.list':{'workspaces':[{'workspace_id':'w1','label':'Fixture workspace'}]},
           'tab.list':{'tabs':[]},
           'pane.layout':{'layout':{'panes':[{'pane_id':'p1','rect':{'width':90,'height':30}}]}}

@@ -96,8 +96,20 @@ final class BridgeJobTests: XCTestCase {
     }
     XCTAssertNoThrow(try validateBridgeEnvelope(envelope(["paste":"/cache/a'post with space.png"]),configuration:c))
     XCTAssertNoThrow(try validateBridgeEnvelope(envelope(["paste":"  first\n\tsecond café\n"]),configuration:c))
-    for payload:[String:Any] in [["paste":""],["paste":"bad\r"],["paste":"bad\u{1b}"],["paste":String(repeating:"x",count:16385)],["paste":"x","keys":["enter"]],["paste":true]] {
+    for payload:[String:Any] in [["paste":""],["paste":"bad\r"],["paste":"bad\u{1b}"],["paste":String(repeating:"x",count:262145)],["paste":"x","keys":["enter"]],["paste":true]] {
       XCTAssertThrowsError(try validateBridgeEnvelope(envelope(payload),configuration:c))
+    }
+  }
+  func testLargerTextBoundariesAcrossNativeInputAndReviewedSend() throws {
+    let c=try config("input")
+    let route:[String:Any] = ["machine":"gateway","session":"default","targetHash":String(repeating:"a",count:64),"generation":String(repeating:"b",count:64),"terminal":"t1","pane":"p1"]
+    let text=String(repeating:"🙂",count:65536)
+    XCTAssertEqual(text.utf8.count,262144)
+    for (op,field) in [("input","paste"),("input","text"),("send","text")] {
+      var row:[String:Any]=["type":"request","protocol":"agentspace-bridge-v2","nonce":c.nonce,"lane":"input","id":"1","op":op,"route":route,"payload":[field:text]]
+      XCTAssertNoThrow(try validateBridgeEnvelope(row,configuration:c))
+      row["payload"]=[field:text+"x"]
+      XCTAssertThrowsError(try validateBridgeEnvelope(row,configuration:c))
     }
   }
   func testCancelledBridgePreparationNeverLaunchesWorker() throws {
@@ -142,7 +154,7 @@ final class BridgeJobTests: XCTestCase {
     let route:[String:Any]=["machine":"gateway","session":"default","targetHash":String(repeating:"a",count:64),"generation":String(repeating:"b",count:64),"terminal":"t1","pane":"p1"]
     let valid:[String:Any]=["type":"request","protocol":"agentspace-bridge-v2","nonce":configuration.nonce,"lane":"input","id":"1","op":"input","route":route,"payload":["keys":["cmd+backspace","ctrl+enter","shift+cmd+left"]]]
     XCTAssertNoThrow(try validateBridgeEnvelope(valid,configuration:configuration))
-    for change:[String:Any] in [["op":"shell"],["lane":"discovery"],["nonce":String(repeating:"c",count:32)],["payload":["keys":["ctrl+ctrl+c"]]],["payload":["text":"bad\u{1b}"]],["payload":["text":String(repeating:"x",count:16385)]]] {
+    for change:[String:Any] in [["op":"shell"],["lane":"discovery"],["nonce":String(repeating:"c",count:32)],["payload":["keys":["ctrl+ctrl+c"]]],["payload":["text":"bad\u{1b}"]],["payload":["text":String(repeating:"x",count:262145)]]] {
       var row=valid; row.merge(change) { _,new in new }
       XCTAssertThrowsError(try validateBridgeEnvelope(row,configuration:configuration))
     }

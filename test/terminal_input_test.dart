@@ -861,7 +861,11 @@ void main() {
       await tester.pump();
       expect(backend.input, isEmpty);
       expect(app.layout.drafts[backend.session.key.id], 'keep');
-      expect(find.textContaining('16 KiB'), findsWidgets);
+      expect(find.textContaining('256 KiB'), findsWidgets);
+      expect(
+        app.sendStates[backend.session.key.id]?.uncertain ?? false,
+        isFalse,
+      );
     } finally {
       await tester.pump(const Duration(milliseconds: 350));
       await tester.pumpWidget(const SizedBox());

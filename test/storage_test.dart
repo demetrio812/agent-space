@@ -126,7 +126,7 @@ void main() {
       addTearDown(() => dir.delete(recursive: true));
       final store = LayoutStore(dir.path), state = AppSnapshot();
       final id = const SessionKey('herdr', 'demo', 'generation', 't1').id;
-      final draft = 'café ' * 4000;
+      final draft = 'café ' * 45000;
       expect(validateInput(draft), isNotNull);
       state.layoutFor('demo').drafts[id] = draft;
       await store.save(state);

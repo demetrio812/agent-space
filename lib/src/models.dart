@@ -5,7 +5,12 @@ import 'dart:convert';
 import 'network_models.dart';
 
 const maxCatalogBytes = 2 * 1024 * 1024;
-const maxInputBytes = 16 * 1024;
+// Herdr 0.9.3 accepts 1 MiB of encoded JSON. Escaping Unicode can triple
+// UTF-8 text size, so 256 KiB leaves room for the request envelope.
+const maxInputBytes = 256 * 1024;
+const legacyMaxInputBytes = 16 * 1024;
+const maxTypingBatchBytes = 16 * 1024;
+const maxQueuedTerminalBytes = maxInputBytes + 64 * 1024;
 final terminalIdPattern = RegExp(
   r'^[A-Za-z0-9_.:@%+/][A-Za-z0-9_.:@%+/-]{0,255}$',
 );
@@ -362,7 +367,7 @@ List<SessionInfo> parseCatalog(String json, String profile) {
 String? validateInput(String text) {
   if (text.trim().isEmpty) return 'Write a message first.';
   if (utf8.encode(text).length > maxInputBytes) {
-    return 'Keep the message under 16 KiB.';
+    return 'Messages can be up to 256 KiB.';
   }
   if (RegExp(r'[\x00-\x08\x0b-\x1f\x7f-\x9f]').hasMatch(text)) {
     return 'The message contains a terminal control character.';
@@ -437,7 +442,7 @@ class TerminalInput {
     final text = textValue;
     if (text != null) {
       if (text.isEmpty || utf8.encode(text).length > maxInputBytes) {
-        return 'Keep terminal typing under 16 KiB per batch.';
+        return 'Terminal input can be up to 256 KiB per paste or batch.';
       }
       final controls = isPaste
           ? RegExp(r'[\x00-\x08\x0b-\x1f\x7f-\x9f]')

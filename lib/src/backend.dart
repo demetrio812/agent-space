@@ -929,6 +929,12 @@ class RemoteHerdrBackend
       );
       return;
     }
+    if (utf8.encode(text).length > legacyMaxInputBytes) {
+      throw ConnectionFailure(
+        'This older SSH connection accepts up to 16 KiB. Use an ordinary SSH connection for larger messages.',
+        permanent: true,
+      );
+    }
     final current = (await listSessions())
         .where((s) => s.key == session.key)
         .firstOrNull;
@@ -985,6 +991,13 @@ class RemoteHerdrBackend
         timeout: const Duration(seconds: 30),
       );
       return;
+    }
+    if (input.textValue != null &&
+        utf8.encode(input.textValue!).length > legacyMaxInputBytes) {
+      throw ConnectionFailure(
+        'This older SSH connection accepts up to 16 KiB. Use an ordinary SSH connection for larger input.',
+        permanent: true,
+      );
     }
     // The restricted input gate revalidates permission, server generation and the
     // live terminal/pane before dispatch. Avoid a second catalog round trip here.

@@ -18,7 +18,7 @@ final class HelperSession: NSObject, HerdrHelperProtocol {
     do { reply(try socketIdentity(path),nil) } catch { reply(nil,(error as? HelperFault)?.message ?? "Herdr is unavailable.") }
   }
   func start(_ request:String, reply:@escaping (String?)->Void) {
-    guard request.utf8.count <= 65536, let data = request.data(using:.utf8), let row = try? JSONSerialization.jsonObject(with:data) as? [String:Any],
+    guard request.utf8.count <= 2 * 1024 * 1024, let data = request.data(using:.utf8), let row = try? JSONSerialization.jsonObject(with:data) as? [String:Any],
           let id = row["id"] as? String, id.range(of:#"^[A-Za-z0-9-]{1,80}$"#,options:.regularExpression) != nil,
           let executable = row["executable"] as? String, let path = row["socketPath"] as? String, let args = row["arguments"] as? [String] else { reply("Invalid Herdr request."); return }
     lock.lock()

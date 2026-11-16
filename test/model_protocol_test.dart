@@ -179,8 +179,8 @@ void main() {
     );
     expect(validateInput('\u001b[2J'), isNotNull);
     expect(validateInput('   '), isNotNull);
-    expect(validateInput('é' * 8192), isNull);
-    expect(validateInput('é' * 8193), isNotNull);
+    expect(validateInput('é' * 131072), isNull);
+    expect(validateInput('é' * 131073), isNotNull);
   });
   test(
     'status mapping keeps idle neutral and attention separate from transport',

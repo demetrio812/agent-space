@@ -151,7 +151,7 @@ func validateBridgeEnvelope(_ row:[String:Any],configuration:BridgeConfiguration
     if Set(payload.keys)==Set(["text"]) || Set(payload.keys)==Set(["paste"]),
        let text=(payload["text"] ?? payload["paste"]) as? String {
       if payload["paste"] != nil {
-        guard !text.isEmpty, text.utf8.count <= 16384,
+        guard !text.isEmpty, text.utf8.count <= maxHerdrInputBytes,
               !text.unicodeScalars.contains(where: {
                 ($0.value < 32 && $0.value != 9 && $0.value != 10) || (127...159).contains($0.value)
               }) else { throw HelperFault(message:"Invalid terminal paste.") }

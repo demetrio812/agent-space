@@ -190,6 +190,62 @@ void main() {
     }
   }, skip: python == null ? 'Set AGENTSPACE_TEST_PYTHON.' : false);
   test(
+    'ordinary SSH forwards maximum paste and reviewed Send unchanged',
+    () async {
+      await normalShell();
+      final backend = RemoteHerdrBackend(profile, vault);
+      try {
+        final session = (await backend.listSessions()).single;
+        final text = '🙂' * 65536;
+        await backend.sendTerminalInput(session, TerminalInput.paste(text));
+        await backend.sendText(session, text);
+        final sends = (await apiCalls())
+            .where((c) => c['method'] == 'pane.send_input')
+            .toList();
+        expect(sends, hasLength(2));
+        expect(sends[0]['params'], {'pane_id': 'p1', 'text': text, 'keys': []});
+        expect(sends[1]['params'], {
+          'pane_id': 'p1',
+          'text': text,
+          'keys': ['Enter'],
+        });
+      } finally {
+        await backend.close();
+      }
+    },
+    skip: python == null ? 'Set AGENTSPACE_TEST_PYTHON.' : false,
+  );
+  test(
+    'legacy SSH rejects large input before starting a remote request',
+    () async {
+      final backend = RemoteHerdrBackend(profile, vault);
+      try {
+        final session = (await backend.listSessions()).single;
+        final before = await events();
+        final large = 'x' * 16385;
+        for (final request in [
+          () => backend.sendText(session, large),
+          () => backend.sendTerminalInput(session, TerminalInput.text(large)),
+        ]) {
+          await expectLater(
+            request(),
+            throwsA(
+              isA<ConnectionFailure>().having(
+                (e) => e.message,
+                'message',
+                contains('16 KiB'),
+              ),
+            ),
+          );
+        }
+        expect(await events(), before);
+      } finally {
+        await backend.close();
+      }
+    },
+    skip: python == null ? 'Set AGENTSPACE_TEST_PYTHON.' : false,
+  );
+  test(
     'normal password SSH reuses private workers and preserves literal input',
     () async {
       await normalShell();

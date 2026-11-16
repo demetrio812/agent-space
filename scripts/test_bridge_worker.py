@@ -18,6 +18,20 @@ class WorkerTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
 
+    def test_large_utf8_paste_and_send_are_single_requests_with_exact_enter_semantics(self):
+        with FakeHerdr(self.root) as h:
+            api=LocalApi(h.socket_path,'peer');generation=api.generation()
+            route={'generation':generation,'terminal':'t1','pane':'p1'}
+            text='🙂'*65536
+            api.dispatch(route,{'paste':text});api.dispatch(route,{'text':text},reviewed=True)
+            sends=[r for r in h.calls if r['method'].startswith('pane.send')]
+            self.assertEqual([(r['method'],r['params']) for r in sends],[
+                ('pane.send_input',{'pane_id':'p1','text':text,'keys':[]}),
+                ('pane.send_input',{'pane_id':'p1','text':text,'keys':['Enter']})])
+            for payload in ({'paste':text+'x'},{'text':text+'x'}):
+                with self.assertRaises(BridgeRejected):api.dispatch(route,payload)
+            self.assertEqual(len([r for r in h.calls if r['method'].startswith('pane.send')]),2)
+
     def test_shell_remains_discoverable_and_writable_after_agent_exits(self):
         with FakeHerdr(self.root) as h:
             api=LocalApi(h.socket_path,'peer')
@@ -106,7 +120,7 @@ class WorkerTests(unittest.TestCase):
             sends=[r for r in h.calls if r['method'].startswith('pane.send')]
             self.assertEqual([(r['method'],r['params']) for r in sends],[
                 ('pane.send_input',{'pane_id':'p1','text':"/cache/a'post with space.png",'keys':[]})])
-            for value in [{'paste':'bad\x1b'}, {'paste':'bad\r'}, {'paste':'x'*16385}, {'paste':'x','keys':['enter']}]:
+            for value in [{'paste':'bad\x1b'}, {'paste':'bad\r'}, {'paste':'x'*262145}, {'paste':'x','keys':['enter']}]:
                 with self.subTest(value=value), self.assertRaises(BridgeRejected): api.dispatch(route,value)
             self.assertEqual(len([r for r in h.calls if r['method'].startswith('pane.send')]),1)
 
@@ -164,7 +178,7 @@ class WorkerTests(unittest.TestCase):
         with FakeHerdr(self.root) as h:
             api=LocalApi(h.socket_path,'peer'); generation=api.catalog()['serverIdentity']
             route={'generation':generation,'terminal':'t1','pane':'p1'}
-            for value in [{'text':'bad\x1b'}, {'text':'line\n'}, {'text':'x'*16385},
+            for value in [{'text':'bad\x1b'}, {'text':'line\n'}, {'text':'x'*262145},
                           {'keys':['ctrl+ctrl+c']},{'keys':['cmd+backspace;bad']},
                           {'keys':['up']*33}, {'text':'x','keys':['enter']}]:
                 with self.subTest(value=value), self.assertRaises(BridgeRejected): api.dispatch(route,value)
